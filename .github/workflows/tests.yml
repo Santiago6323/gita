@@ -9,12 +9,16 @@ jobs:
   pytest:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false  # una versión que falle no cancela las demás
       matrix:
         python-version: ["3.8", "3.10", "3.12"]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      # uv instala cualquier versión de Python (incluida 3.8, que setup-python
+      # ya no ofrece en las imágenes nuevas de Ubuntu) y activa un entorno virtual
+      - uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ matrix.python-version }}
-      - run: pip install ".[dev]"
+          activate-environment: true
+      - run: uv pip install ".[dev]"
       - run: pytest -q
