@@ -4,6 +4,7 @@ import soundfile as sf
 
 from gita.audio import (
     a_mono,
+    eliminar_dc,
     normalizar_pico,
     preprocesar,
     preprocesar_archivo,
@@ -107,3 +108,30 @@ def test_preprocesar_archivo(tmp_path):
     assert info.channels == 1 and info.subtype == "PCM_16"
     y, _ = sf.read(ruta)
     assert np.max(np.abs(y)) > 0.99
+
+
+# --- eliminar_dc ------------------------------------------------------------
+
+def test_eliminar_dc_media_cero_y_conserva_la_senal():
+    x = seno(440, 16000)
+    y = eliminar_dc(x + 0.3)
+    assert abs(np.mean(y)) < 1e-12
+    assert np.allclose(y, x - np.mean(x))
+
+
+def test_eliminar_dc_multicanal_por_canal():
+    x = np.column_stack([seno(440, 16000) + 0.2, seno(880, 16000) - 0.5])
+    assert np.allclose(eliminar_dc(x).mean(axis=0), 0)
+
+
+def test_preprocesar_quita_dc_y_pico_simetrico():
+    x = 0.2 + seno(440, 44100, amplitud=0.5)
+    y, _ = preprocesar(x, 44100)
+    assert abs(np.mean(y)) < 1e-3
+    assert np.isclose(np.max(y), 1.0, atol=0.01) and np.isclose(np.min(y), -1.0, atol=0.01)
+
+
+def test_preprocesar_sin_quitar_dc_conserva_offset():
+    x = 0.2 + seno(440, 44100, amplitud=0.5)
+    y, _ = preprocesar(x, 44100, quitar_dc=False)
+    assert np.mean(y) > 0.2  # 0.2 escalado por k = 1/0.7

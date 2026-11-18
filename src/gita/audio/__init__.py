@@ -2,9 +2,10 @@
 gita.audio — utilidades para señales y archivos de audio.
 """
 
-from .remuestreo import (
+from .preprocesamiento import (
     FS_DESTINO,
     a_mono,
+    eliminar_dc,
     normalizar_pico,
     preprocesar,
     preprocesar_archivo,
@@ -15,6 +16,7 @@ from .remuestreo import (
 __all__ = [
     "FS_DESTINO",
     "a_mono",
+    "eliminar_dc",
     "normalizar_pico",
     "preprocesar",
     "preprocesar_archivo",

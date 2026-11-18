@@ -1,12 +1,15 @@
 """
-Remuestreo y normalización de señales de audio.
+Preprocesamiento de audio: mono, eliminación de DC, remuestreo y normalización por pico.
 
 Flujo estándar (``preprocesar``):
 
-    señal -> mono -> remuestreo a fs_destino -> normalización por pico
+    señal -> mono -> eliminar DC -> remuestreo a fs_destino -> normalización por pico
 
-El orden importa: se normaliza al final porque el filtro antialiasing del
-remuestreo puede cambiar el valor pico de la señal.
+El orden importa:
+- El DC se quita antes de remuestrear: con offset, el filtro del remuestreo
+  produce transitorios en los bordes de la señal.
+- Se normaliza al final porque el filtro antialiasing del remuestreo puede
+  cambiar el valor pico de la señal.
 
 Convención de forma: una señal es un arreglo 1D (n,) si es mono o 2D
 (n, canales) si tiene varios canales, igual que lo devuelve ``soundfile.read``.
@@ -36,6 +39,18 @@ def a_mono(senal):
     raise ValueError(
         "La señal debe ser 1D (n,) o 2D (n, canales); tiene forma {}".format(senal.shape)
     )
+
+
+def eliminar_dc(senal):
+    """Elimina el offset DC restando la media de cada canal: y = x - media(x).
+
+    Funciona con señales 1D (n,) o (n, canales); en multicanal resta la media
+    de cada canal por separado.
+    """
+    senal = np.asarray(senal, dtype=np.float64)
+    if senal.size == 0:
+        return senal.copy()
+    return senal - senal.mean(axis=0)
 
 
 def remuestrear(senal, fs_origen, fs_destino=FS_DESTINO):
@@ -74,13 +89,18 @@ def normalizar_pico(senal, pico=1.0):
     return senal * (pico / maximo)
 
 
-def preprocesar(senal, fs, fs_destino=FS_DESTINO, mono=True, normalizar=True, pico=1.0):
-    """Aplica mono -> remuestreo -> normalización por pico.
+def preprocesar(
+    senal, fs, fs_destino=FS_DESTINO, mono=True, quitar_dc=True, normalizar=True, pico=1.0
+):
+    """Aplica mono -> eliminar DC -> remuestreo -> normalización por pico.
 
+    Cada paso se puede desactivar (mono, quitar_dc, normalizar).
     Devuelve (senal_procesada, fs_destino).
     """
     if mono:
         senal = a_mono(senal)
+    if quitar_dc:
+        senal = eliminar_dc(senal)
     senal = remuestrear(senal, fs, fs_destino)
     if normalizar:
         senal = normalizar_pico(senal, pico)
@@ -92,6 +112,7 @@ def preprocesar_archivo(
     ruta_salida,
     fs_destino=FS_DESTINO,
     mono=True,
+    quitar_dc=True,
     normalizar=True,
     pico=1.0,
     subtipo="PCM_16",
@@ -105,7 +126,10 @@ def preprocesar_archivo(
     Devuelve (ruta_salida, fs_destino).
     """
     senal, fs = sf.read(ruta_entrada, dtype="float64", always_2d=False)
-    senal, fs = preprocesar(senal, fs, fs_destino, mono, normalizar, pico)
+    senal, fs = preprocesar(
+        senal, fs, fs_destino=fs_destino, mono=mono, quitar_dc=quitar_dc,
+        normalizar=normalizar, pico=pico,
+    )
 
     carpeta = os.path.dirname(os.path.abspath(ruta_salida))
     os.makedirs(carpeta, exist_ok=True)
@@ -130,6 +154,7 @@ def preprocesar_carpeta(
     sobrescribir=False,
     fs_destino=FS_DESTINO,
     mono=True,
+    quitar_dc=True,
     normalizar=True,
     pico=1.0,
     subtipo="PCM_16",
@@ -170,7 +195,8 @@ def preprocesar_carpeta(
 
         try:
             preprocesar_archivo(
-                str(entrada), str(salida), fs_destino, mono, normalizar, pico, subtipo
+                str(entrada), str(salida), fs_destino=fs_destino, mono=mono,
+                quitar_dc=quitar_dc, normalizar=normalizar, pico=pico, subtipo=subtipo,
             )
             resultado["procesados"].append(relativa)
             if verbose:

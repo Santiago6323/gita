@@ -39,11 +39,12 @@ gita-lab @ git+https://github.com/Santiago6323/gita.git@v0.2.0
 
 ## Módulos
 
-### `gita.audio` — remuestreo y normalización
+### `gita.audio` — preprocesamiento
 
-Lleva cualquier audio a mono, 16 kHz y normalizado por pico (el orden es
-mono → remuestreo → normalización, porque el filtro antialiasing del remuestreo
-cambia el pico). Dependencias: `numpy`, `scipy`, `soundfile` (incluidas en la
+Lleva cualquier audio a mono, sin DC, 16 kHz y normalizado por pico. El orden es
+mono → eliminar DC → remuestreo → normalización: el DC se quita antes de remuestrear
+porque con offset el filtro del remuestreo produce transitorios en los bordes, y se
+normaliza al final porque ese filtro cambia el pico. Dependencias: `numpy`, `scipy`, `soundfile` (incluidas en la
 instalación base).
 
 ```python
@@ -63,9 +64,10 @@ print(resultado["fallidos"])
 | Función | Qué hace |
 |---|---|
 | `a_mono(senal)` | Promedia los canales: (n, canales) → (n,) |
+| `eliminar_dc(senal)` | Resta la media de cada canal: y = x − media(x) |
 | `remuestrear(senal, fs_origen, fs_destino=16000)` | Remuestreo polifásico con antialiasing (`scipy.signal.resample_poly`) |
 | `normalizar_pico(senal, pico=1.0)` | Escala para que max(\|x\|) = pico; el silencio se deja igual |
-| `preprocesar(senal, fs, fs_destino=16000, mono=True, normalizar=True, pico=1.0)` | Las tres anteriores en orden; devuelve `(senal, fs_destino)` |
+| `preprocesar(senal, fs, fs_destino=16000, mono=True, quitar_dc=True, normalizar=True, pico=1.0)` | Las cuatro anteriores en orden; devuelve `(senal, fs_destino)` |
 | `preprocesar_archivo(entrada, salida, ..., subtipo="PCM_16")` | Lo mismo de archivo a archivo; devuelve `(salida, fs_destino)` |
 | `preprocesar_carpeta(entrada, salida, extensiones=(".wav", ".flac"), recursivo=True, sobrescribir=False, ...)` | Lo mismo para toda una carpeta, manteniendo subcarpetas; devuelve un dict con `procesados`, `saltados` y `fallidos` |
 
