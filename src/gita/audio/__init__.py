@@ -8,6 +8,7 @@ from .remuestreo import (
     normalizar_pico,
     preprocesar,
     preprocesar_archivo,
+    preprocesar_carpeta,
     remuestrear,
 )
 
@@ -17,5 +18,6 @@ __all__ = [
     "normalizar_pico",
     "preprocesar",
     "preprocesar_archivo",
+    "preprocesar_carpeta",
     "remuestrear",
 ]

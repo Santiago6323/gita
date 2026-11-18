@@ -13,6 +13,7 @@ Convención de forma: una señal es un arreglo 1D (n,) si es mono o 2D
 """
 
 import os
+from pathlib import Path
 from math import gcd
 
 import numpy as np
@@ -110,3 +111,76 @@ def preprocesar_archivo(
     os.makedirs(carpeta, exist_ok=True)
     sf.write(ruta_salida, senal, fs, subtype=subtipo)
     return ruta_salida, fs
+
+
+def _esta_dentro(ruta, carpeta):
+    """True si ruta está dentro de carpeta (o es la misma). Compatible con Python 3.8."""
+    try:
+        ruta.resolve().relative_to(carpeta.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def preprocesar_carpeta(
+    carpeta_entrada,
+    carpeta_salida,
+    extensiones=(".wav", ".flac"),
+    recursivo=True,
+    sobrescribir=False,
+    fs_destino=FS_DESTINO,
+    mono=True,
+    normalizar=True,
+    pico=1.0,
+    subtipo="PCM_16",
+    verbose=True,
+):
+    """Preprocesa todos los audios de carpeta_entrada y los guarda en carpeta_salida.
+
+    - Mantiene la estructura de subcarpetas: entrada/a/b.flac -> salida/a/b.wav
+    - recursivo=True busca también en subcarpetas.
+    - sobrescribir=False salta los archivos de salida que ya existen
+      (permite retomar un lote interrumpido).
+    - Un archivo que falle no detiene el lote: queda registrado en "fallidos".
+    - Los demás parámetros se pasan a preprocesar_archivo.
+
+    Devuelve un dict con las rutas relativas de "procesados", "saltados" y
+    "fallidos" (lista de tuplas (ruta, mensaje_de_error)).
+    """
+    carpeta_entrada = Path(carpeta_entrada)
+    carpeta_salida = Path(carpeta_salida)
+    if not carpeta_entrada.is_dir():
+        raise FileNotFoundError("No existe la carpeta de entrada: {}".format(carpeta_entrada))
+    if _esta_dentro(carpeta_salida, carpeta_entrada):
+        raise ValueError("La carpeta de salida no puede estar dentro de la de entrada")
+
+    extensiones = {e.lower() for e in extensiones}
+    patron = carpeta_entrada.rglob("*") if recursivo else carpeta_entrada.glob("*")
+    archivos = sorted(p for p in patron if p.is_file() and p.suffix.lower() in extensiones)
+
+    resultado = {"procesados": [], "saltados": [], "fallidos": []}
+    total = len(archivos)
+    for i, entrada in enumerate(archivos, 1):
+        relativa = entrada.relative_to(carpeta_entrada)
+        salida = (carpeta_salida / relativa).with_suffix(".wav")
+
+        if salida.exists() and not sobrescribir:
+            resultado["saltados"].append(relativa)
+            continue
+
+        try:
+            preprocesar_archivo(
+                str(entrada), str(salida), fs_destino, mono, normalizar, pico, subtipo
+            )
+            resultado["procesados"].append(relativa)
+            if verbose:
+                print("[{}/{}] {}".format(i, total, relativa))
+        except Exception as e:
+            resultado["fallidos"].append((relativa, str(e)))
+            if verbose:
+                print("[{}/{}] ERROR {}: {}".format(i, total, relativa, e))
+
+    if verbose:
+        print("Procesados: {}  Saltados: {}  Fallidos: {}".format(
+            len(resultado["procesados"]), len(resultado["saltados"]), len(resultado["fallidos"])))
+    return resultado
