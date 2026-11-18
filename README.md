@@ -71,44 +71,62 @@ print(resultado["fallidos"])
 | `preprocesar_archivo(entrada, salida, ..., subtipo="PCM_16")` | Lo mismo de archivo a archivo; devuelve `(salida, fs_destino)` |
 | `preprocesar_carpeta(entrada, salida, extensiones=(".wav", ".flac"), recursivo=True, sobrescribir=False, ...)` | Lo mismo para toda una carpeta, manteniendo subcarpetas; devuelve un dict con `procesados`, `saltados` y `fallidos` |
 
-### `gita.audio.disvoice` — caracterización con DisVoice
+### `gita.audio.caracterizacion` — caracterización (DisVoice)
 
-DisVoice necesita su propio entorno de conda (TensorFlow, phonet...), así que gita no
+Todas las funciones de caracterización aceptan como entrada **una carpeta o una lista
+de rutas** (p. ej. `seleccionar_datos(...)["seleccionados"]`).
+
+**DisVoice** necesita su propio entorno de conda (TensorFlow, phonet...), así que gita no
 lo importa: lo ejecuta como un proceso aparte con el Python de ese entorno. No hay que
 instalar gita en el entorno de DisVoice. Dependencia en el entorno de gita: `pandas`.
 
-Indica una sola vez dónde está el Python de DisVoice (p. ej. en `~/.bashrc`):
+El Python de DisVoice se busca en este orden:
 
-```bash
-export GITA_DISVOICE_PYTHON=~/miniconda3/envs/disvoice/bin/python
-```
-
-o pásalo como argumento: `caracterizar_disvoice(..., python_disvoice="...")`.
+1. el parámetro `python_disvoice="..."`
+2. la variable de entorno `GITA_DISVOICE_PYTHON`
+3. un entorno de conda llamado `disvoice` junto al entorno actual
+   (p. ej. `envs/portables` → `envs/disvoice`): sin configurar nada
 
 ```python
-from gita.audio.disvoice import caracterizar_disvoice
+from gita.audio.caracterizacion import caracterizar_disvoice
 
 r = caracterizar_disvoice(
-    "audios_16k/",                      # carpeta o lista de rutas (p. ej. r["seleccionados"])
-    ["phonation", "prosody"],           # una o varias dimensiones
-    carpeta_salida="caracteristicas/",  # opcional: guarda phonation.csv, prosody.csv, ...
+    "audios_16k/",                 # carpeta o lista de rutas
+    ["phonation", "prosody"],      # una o varias dimensiones
+    estaticas=True,                # un vector por audio
+    dinamicas=True,                # un vector por frame (ambos modos en el mismo proceso)
 )
-df = r["caracteristicas"]["phonation"]  # columnas: id, ruta, características de DisVoice
-print(r["fallidos"])                    # audios que fallaron (su fila queda en NaN)
+r["estaticas"]["phonation"]        # columnas: id, ruta, características
+r["dinamicas"]["phonation"]        # columnas: id, ruta, frame, características
+r["fallidos"]                      # audios que fallaron (dimension, tipo, ruta, error)
+```
+
+Por defecto guarda todo en `caracteristicas/`, **relativa al directorio de trabajo** (en
+Spyder con `%runfile --wdir`, la carpeta del script):
+
+```
+caracteristicas/
+  phonation.csv          estáticas
+  phonation_dyn.csv      dinámicas
+  prosody.csv ...
+  errores_disvoice.csv   registro de audios que fallaron (con traceback)
 ```
 
 | Función | Qué hace |
 |---|---|
-| `caracterizar_disvoice(entrada, dimensiones=("phonation",), python_disvoice=None, carpeta_salida=None, sobrescribir=False)` | Características estáticas (un vector por audio) de `phonation`, `prosody`, `articulation`, `phonological` y/o `glottal`, todas en un solo proceso. Devuelve `{"caracteristicas": {dimension: DataFrame}, "fallidos": [...]}` |
+| `caracterizar_disvoice(entrada, dimensiones=("phonation",), estaticas=True, dinamicas=False, carpeta_salida="caracteristicas", sobrescribir=False, python_disvoice=None)` | Características de `phonation`, `prosody`, `articulation`, `phonological` y/o `glottal`, estáticas y/o dinámicas, en un solo proceso. Devuelve `{"estaticas": {...}, "dinamicas": {...}, "fallidos": [...]}` |
 
-- Columnas: `id` (nombre sin extensión), `ruta` (distingue el mismo `id` en tareas
-  distintas) y las de `head_st` de DisVoice.
-- Los NaN de DisVoice se dejan como NaN; los ±inf se convierten a NaN. Un audio que falla
-  queda con su fila en NaN y su error en `fallidos` (y en `errores_disvoice.csv`).
-- Con `carpeta_salida`, una dimensión cuyo CSV ya existe se carga en vez de extraerse de
-  nuevo (`sobrescribir=True` para rehacerla).
+- `id` es el nombre sin extensión y `ruta` distingue el mismo `id` en tareas distintas.
+- Los NaN de DisVoice se conservan; los ±inf se convierten a NaN. Un audio que falla queda
+  con su fila en NaN (estáticas) o sin frames (dinámicas), y su error en `fallidos`.
+- Un CSV que ya existe se carga en vez de extraerse de nuevo (`sobrescribir=True` para
+  rehacerlo). Si es de otra lista de audios, se detiene con un error.
+  `carpeta_salida=None` no guarda nada.
 - `phonological` exige audios a 16 kHz (con otra frecuencia phonet devuelve NaN): si
   alguno no lo está, se detiene antes de extraer.
+- Dinámicas: qué es un frame depende de la dimensión (phonation: ventana sonora;
+  articulation: onset sordo→sonoro; prosody: segmento sonoro; phonological: frame de
+  phonet). Se avisa de los audios con menos de 20 frames.
 
 ### `gita.datos` — selección de archivos por IDs
 
