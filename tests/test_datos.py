@@ -1,6 +1,6 @@
 import pytest
 
-from gita.datos import crear_enlaces, leer_ids, seleccionar_por_ids
+from gita.datos import crear_enlaces, leer_ids, seleccionar_datos, seleccionar_por_ids
 
 
 # --- leer_ids ---------------------------------------------------------------
@@ -133,3 +133,34 @@ def test_preprocesar_carpeta_acepta_carpeta_de_enlaces(base, tmp_path):
 
     r = preprocesar_carpeta(destino, tmp_path / "salida", verbose=False)
     assert len(r["procesados"]) == 2
+
+
+# --- seleccionar_datos ------------------------------------------------------
+
+def test_seleccionar_datos_desde_csv(base, tmp_path):
+    ids = tmp_path / "ids.csv"
+    ids.write_text("id;grupo\nID001;GG\nID003;GU\nID999;GG\n")
+    destino = tmp_path / "seleccionados"
+
+    r = seleccionar_datos(base, ids, destino, columna="id", verbose=False)
+
+    assert len(r["seleccionados"]) == 4 and len(r["enlaces"]) == 4
+    assert r["ids_no_encontrados"] == ["ID999"]
+    assert sorted(str(p.relative_to(destino)) for p in destino.rglob("*.wav")) == [
+        "tarea1/ID001.wav", "tarea1/ID003.wav", "tarea2/ID001.wav", "tarea2/ID003.wav",
+    ]
+
+
+def test_seleccionar_datos_con_lista(base, tmp_path):
+    r = seleccionar_datos(base, ["ID002"], tmp_path / "sel", verbose=False)
+    assert len(r["enlaces"]) == 1
+
+
+def test_seleccionar_datos_sin_coincidencias_no_toca_destino(base, tmp_path):
+    destino = tmp_path / "seleccionados"
+    seleccionar_datos(base, ["ID001"], destino, verbose=False)
+    antes = sorted(destino.rglob("*"))
+
+    with pytest.raises(ValueError):
+        seleccionar_datos(base, ["001", "002"], destino, verbose=False)
+    assert sorted(destino.rglob("*")) == antes   # la selección anterior sigue intacta

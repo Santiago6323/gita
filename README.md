@@ -86,6 +86,10 @@ print(r["ids_no_encontrados"])                    # IDs de la lista sin ningún 
 
 # Carpeta con solo los seleccionados, sin copiar datos (enlaces simbólicos)
 crear_enlaces(r["seleccionados"], "audios_16k/", "seleccionados/")
+
+# Las tres en una sola llamada
+from gita.datos import seleccionar_datos
+r = seleccionar_datos("audios_16k/", "ids.csv", "seleccionados/", columna="id")
 ```
 
 | Función | Qué hace |
@@ -93,6 +97,7 @@ crear_enlaces(r["seleccionados"], "audios_16k/", "seleccionados/")
 | `leer_ids(ruta, columna=None)` | IDs de un `.txt` (uno por línea) o de una columna de un `.csv`/`.tsv` (separador `,` `;` o tabulación detectado solo); quita espacios y duplicados |
 | `seleccionar_por_ids(carpeta, ids, extensiones=(".wav",), recursivo=True)` | Rutas de los archivos cuyo nombre está en `ids`; devuelve un dict con `seleccionados` e `ids_no_encontrados`. Coincidencia exacta (`001` ≠ `1`, `id001` ≠ `ID001`) |
 | `crear_enlaces(rutas, carpeta_base, carpeta_destino)` | Crea enlaces simbólicos manteniendo la estructura relativa a `carpeta_base`. La carpeta destino queda exactamente con la selección actual (borra los enlaces de una ejecución anterior, nunca los originales; si encuentra archivos reales, no toca nada) |
+| `seleccionar_datos(carpeta, ids, carpeta_destino, columna=None, extensiones=(".wav",))` | Las tres anteriores en una llamada; `ids` es un archivo o una lista. Si nada coincide, se detiene sin tocar la carpeta destino. Devuelve `seleccionados`, `enlaces` e `ids_no_encontrados` |
 
 ## Estructura
 

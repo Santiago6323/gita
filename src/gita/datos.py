@@ -156,3 +156,40 @@ def crear_enlaces(rutas, carpeta_base, carpeta_destino, verbose=True):
     if verbose:
         print("{} enlaces creados en {}".format(len(creados), carpeta_destino))
     return creados
+
+
+def seleccionar_datos(
+    carpeta, ids, carpeta_destino, columna=None, extensiones=(".wav",), recursivo=True,
+    verbose=True,
+):
+    """Selecciona los archivos de una lista de IDs y crea con ellos una carpeta de enlaces.
+
+    Encadena leer_ids -> seleccionar_por_ids -> crear_enlaces.
+
+    - ids: ruta a un archivo de IDs (str o Path; se lee con leer_ids y columna)
+      o una lista de IDs.
+    - carpeta_destino: carpeta de enlaces simbólicos con solo los seleccionados,
+      con la misma estructura de carpeta (p. ej. tarea1/ID001.wav).
+
+    Si ningún archivo coincide con los IDs, lanza ValueError sin tocar
+    carpeta_destino (suele indicar una columna o unos nombres equivocados).
+
+    Devuelve un dict con "seleccionados" (rutas originales), "enlaces" (rutas de
+    los enlaces) e "ids_no_encontrados".
+    """
+    if isinstance(ids, (str, Path)):
+        ids = leer_ids(ids, columna)
+
+    r = seleccionar_por_ids(carpeta, ids, extensiones, recursivo, verbose)
+    if not r["seleccionados"]:
+        raise ValueError(
+            "Ningún archivo de {} coincide con los IDs (p. ej. {}). "
+            "Revisa la columna o el formato de los IDs.".format(carpeta, list(ids)[:3])
+        )
+
+    enlaces = crear_enlaces(r["seleccionados"], carpeta, carpeta_destino, verbose)
+    return {
+        "seleccionados": r["seleccionados"],
+        "enlaces": enlaces,
+        "ids_no_encontrados": r["ids_no_encontrados"],
+    }
