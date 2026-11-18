@@ -14,6 +14,7 @@ dependencies = [
     "numpy",
     "scipy",      # gita.audio: remuestreo polifásico (resample_poly)
     "soundfile",  # gita.audio: lectura/escritura de archivos de audio
+    "pandas",     # gita.audio.disvoice: tablas de características
 ]
 
 [project.optional-dependencies]

@@ -71,6 +71,45 @@ print(resultado["fallidos"])
 | `preprocesar_archivo(entrada, salida, ..., subtipo="PCM_16")` | Lo mismo de archivo a archivo; devuelve `(salida, fs_destino)` |
 | `preprocesar_carpeta(entrada, salida, extensiones=(".wav", ".flac"), recursivo=True, sobrescribir=False, ...)` | Lo mismo para toda una carpeta, manteniendo subcarpetas; devuelve un dict con `procesados`, `saltados` y `fallidos` |
 
+### `gita.audio.disvoice` — caracterización con DisVoice
+
+DisVoice necesita su propio entorno de conda (TensorFlow, phonet...), así que gita no
+lo importa: lo ejecuta como un proceso aparte con el Python de ese entorno. No hay que
+instalar gita en el entorno de DisVoice. Dependencia en el entorno de gita: `pandas`.
+
+Indica una sola vez dónde está el Python de DisVoice (p. ej. en `~/.bashrc`):
+
+```bash
+export GITA_DISVOICE_PYTHON=~/miniconda3/envs/disvoice/bin/python
+```
+
+o pásalo como argumento: `caracterizar_disvoice(..., python_disvoice="...")`.
+
+```python
+from gita.audio.disvoice import caracterizar_disvoice
+
+r = caracterizar_disvoice(
+    "audios_16k/",                      # carpeta o lista de rutas (p. ej. r["seleccionados"])
+    ["phonation", "prosody"],           # una o varias dimensiones
+    carpeta_salida="caracteristicas/",  # opcional: guarda phonation.csv, prosody.csv, ...
+)
+df = r["caracteristicas"]["phonation"]  # columnas: id, ruta, características de DisVoice
+print(r["fallidos"])                    # audios que fallaron (su fila queda en NaN)
+```
+
+| Función | Qué hace |
+|---|---|
+| `caracterizar_disvoice(entrada, dimensiones=("phonation",), python_disvoice=None, carpeta_salida=None, sobrescribir=False)` | Características estáticas (un vector por audio) de `phonation`, `prosody`, `articulation`, `phonological` y/o `glottal`, todas en un solo proceso. Devuelve `{"caracteristicas": {dimension: DataFrame}, "fallidos": [...]}` |
+
+- Columnas: `id` (nombre sin extensión), `ruta` (distingue el mismo `id` en tareas
+  distintas) y las de `head_st` de DisVoice.
+- Los NaN de DisVoice se dejan como NaN; los ±inf se convierten a NaN. Un audio que falla
+  queda con su fila en NaN y su error en `fallidos` (y en `errores_disvoice.csv`).
+- Con `carpeta_salida`, una dimensión cuyo CSV ya existe se carga en vez de extraerse de
+  nuevo (`sobrescribir=True` para rehacerla).
+- `phonological` exige audios a 16 kHz (con otra frecuencia phonet devuelve NaN): si
+  alguno no lo está, se detiene antes de extraer.
+
 ### `gita.datos` — selección de archivos por IDs
 
 Selecciona de una base de datos solo los archivos de una lista de IDs. El ID de un
@@ -103,6 +142,7 @@ caracterizar(r["seleccionados"])      # solo los de la lista
 
 ```
 src/gita/        código de la librería (un subpaquete por área: audio, modelos, ...)
+src/gita/audio/_workers/  scripts que se ejecutan con el Python de otros entornos (DisVoice)
 tests/           pruebas (pytest)
 pyproject.toml   metadatos, versión y dependencias
 ```
