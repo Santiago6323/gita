@@ -71,6 +71,29 @@ print(resultado["fallidos"])
 | `preprocesar_archivo(entrada, salida, ..., subtipo="PCM_16")` | Lo mismo de archivo a archivo; devuelve `(salida, fs_destino)` |
 | `preprocesar_carpeta(entrada, salida, extensiones=(".wav", ".flac"), recursivo=True, sobrescribir=False, ...)` | Lo mismo para toda una carpeta, manteniendo subcarpetas; devuelve un dict con `procesados`, `saltados` y `fallidos` |
 
+### `gita.datos` — selección de archivos por IDs
+
+Selecciona de una base de datos solo los archivos de una lista de IDs. El ID de un
+archivo es su nombre sin extensión (`tarea1/ID001.wav` → `ID001`). No lee el contenido
+de los archivos, así que sirve para audio, IMU, EEG, etc. Sin dependencias extra.
+
+```python
+from gita.datos import leer_ids, seleccionar_por_ids, crear_enlaces
+
+ids = leer_ids("ids.csv", columna="id")          # o leer_ids("ids.txt"): uno por línea
+r = seleccionar_por_ids("audios_16k/", ids)       # busca en todas las subcarpetas (tareas)
+print(r["ids_no_encontrados"])                    # IDs de la lista sin ningún archivo
+
+# Carpeta con solo los seleccionados, sin copiar datos (enlaces simbólicos)
+crear_enlaces(r["seleccionados"], "audios_16k/", "seleccionados/")
+```
+
+| Función | Qué hace |
+|---|---|
+| `leer_ids(ruta, columna=None)` | IDs de un `.txt` (uno por línea) o de una columna de un `.csv`/`.tsv` (separador `,` `;` o tabulación detectado solo); quita espacios y duplicados |
+| `seleccionar_por_ids(carpeta, ids, extensiones=(".wav",), recursivo=True)` | Rutas de los archivos cuyo nombre está en `ids`; devuelve un dict con `seleccionados` e `ids_no_encontrados`. Coincidencia exacta (`001` ≠ `1`, `id001` ≠ `ID001`) |
+| `crear_enlaces(rutas, carpeta_base, carpeta_destino)` | Crea enlaces simbólicos manteniendo la estructura relativa a `carpeta_base`. La carpeta destino queda exactamente con la selección actual (borra los enlaces de una ejecución anterior, nunca los originales; si encuentra archivos reales, no toca nada) |
+
 ## Estructura
 
 ```

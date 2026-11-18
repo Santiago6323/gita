@@ -1,0 +1,135 @@
+import pytest
+
+from gita.datos import crear_enlaces, leer_ids, seleccionar_por_ids
+
+
+# --- leer_ids ---------------------------------------------------------------
+
+def test_leer_ids_txt(tmp_path):
+    ruta = tmp_path / "ids.txt"
+    ruta.write_text("ID001\n  ID002 \n\n# comentario\nID001\nID003\n")
+    assert leer_ids(ruta) == ["ID001", "ID002", "ID003"]
+
+
+@pytest.mark.parametrize("sep", [",", ";", "\t"])
+def test_leer_ids_csv_detecta_separador(tmp_path, sep):
+    ruta = tmp_path / "ids.csv"
+    filas = ["id{0}grupo".format(sep), "ID001{0}GG".format(sep), "ID002{0}GU".format(sep)]
+    ruta.write_text("\n".join(filas) + "\n")
+    assert leer_ids(ruta, columna="id") == ["ID001", "ID002"]
+
+
+def test_leer_ids_csv_con_bom_de_excel(tmp_path):
+    ruta = tmp_path / "ids.csv"
+    ruta.write_bytes("id;grupo\nID001;GG\n".encode("utf-8-sig"))
+    assert leer_ids(ruta, columna="id") == ["ID001"]
+
+
+def test_leer_ids_columna_inexistente(tmp_path):
+    ruta = tmp_path / "ids.csv"
+    ruta.write_text("id,grupo\nID001,GG\n")
+    with pytest.raises(KeyError):
+        leer_ids(ruta, columna="sujeto")
+
+
+# --- seleccionar_por_ids ----------------------------------------------------
+
+@pytest.fixture
+def base(tmp_path):
+    carpeta = tmp_path / "audios"
+    for tarea, ids in {"tarea1": ["ID001", "ID002", "ID003"], "tarea2": ["ID001", "ID003"]}.items():
+        (carpeta / tarea).mkdir(parents=True)
+        for i in ids:
+            (carpeta / tarea / (i + ".wav")).write_bytes(b"")
+    (carpeta / "tarea1" / "ID001.txt").write_text("no es audio")
+    return carpeta
+
+
+def test_selecciona_en_todas_las_tareas(base):
+    r = seleccionar_por_ids(base, ["ID001", "ID003"], verbose=False)
+    nombres = [str(p.relative_to(base)) for p in r["seleccionados"]]
+    assert nombres == [
+        "tarea1/ID001.wav", "tarea1/ID003.wav", "tarea2/ID001.wav", "tarea2/ID003.wav",
+    ]
+    assert r["ids_no_encontrados"] == []
+
+
+def test_reporta_ids_no_encontrados(base):
+    r = seleccionar_por_ids(base, ["ID002", "ID999", "1"], verbose=False)
+    assert len(r["seleccionados"]) == 1
+    assert r["ids_no_encontrados"] == ["ID999", "1"]
+
+
+def test_no_copia_nada(base):
+    antes = sorted(base.rglob("*"))
+    seleccionar_por_ids(base, ["ID001"], verbose=False)
+    assert sorted(base.rglob("*")) == antes
+
+
+def test_carpeta_inexistente(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        seleccionar_por_ids(tmp_path / "no_existe", ["ID001"])
+
+
+# --- crear_enlaces ----------------------------------------------------------
+
+def test_crear_enlaces_estructura_y_contenido(base, tmp_path):
+    (base / "tarea1" / "ID001.wav").write_bytes(b"datos de audio")
+    r = seleccionar_por_ids(base, ["ID001", "ID003"], verbose=False)
+    destino = tmp_path / "seleccionados"
+
+    enlaces = crear_enlaces(r["seleccionados"], base, destino, verbose=False)
+
+    assert len(enlaces) == 4
+    assert all(e.is_symlink() for e in enlaces)
+    assert (destino / "tarea1" / "ID001.wav").read_bytes() == b"datos de audio"
+    assert (destino / "tarea2" / "ID003.wav").resolve() == (base / "tarea2" / "ID003.wav").resolve()
+
+
+def test_crear_enlaces_reemplaza_seleccion_anterior(base, tmp_path):
+    destino = tmp_path / "seleccionados"
+    crear_enlaces(seleccionar_por_ids(base, ["ID001", "ID002", "ID003"], verbose=False)["seleccionados"],
+                  base, destino, verbose=False)
+    crear_enlaces(seleccionar_por_ids(base, ["ID002"], verbose=False)["seleccionados"],
+                  base, destino, verbose=False)
+
+    restantes = sorted(str(p.relative_to(destino)) for p in destino.rglob("*.wav"))
+    assert restantes == ["tarea1/ID002.wav"]          # los enlaces viejos ya no están
+    assert not (destino / "tarea2").exists()          # ni las carpetas que quedaron vacías
+    assert (base / "tarea1" / "ID001.wav").exists()   # los originales siguen ahí
+
+
+def test_crear_enlaces_no_toca_archivos_reales(base, tmp_path):
+    destino = tmp_path / "seleccionados"
+    destino.mkdir()
+    (destino / "importante.wav").write_bytes(b"real")
+    with pytest.raises(FileExistsError):
+        crear_enlaces([base / "tarea1" / "ID001.wav"], base, destino, verbose=False)
+    assert (destino / "importante.wav").read_bytes() == b"real"
+
+
+def test_crear_enlaces_destino_dentro_de_base(base):
+    with pytest.raises(ValueError):
+        crear_enlaces([base / "tarea1" / "ID001.wav"], base, base / "seleccionados", verbose=False)
+
+
+def test_crear_enlaces_ruta_fuera_de_base(base, tmp_path):
+    otro = tmp_path / "otro.wav"
+    otro.write_bytes(b"")
+    with pytest.raises(ValueError):
+        crear_enlaces([otro], base, tmp_path / "seleccionados", verbose=False)
+
+
+def test_preprocesar_carpeta_acepta_carpeta_de_enlaces(base, tmp_path):
+    import numpy as np
+    import soundfile as sf
+    from gita.audio import preprocesar_carpeta
+
+    for p in base.rglob("*.wav"):
+        sf.write(str(p), 0.3 * np.sin(np.linspace(0, 100, 44100)), 44100)
+    destino = tmp_path / "seleccionados"
+    crear_enlaces(seleccionar_por_ids(base, ["ID001"], verbose=False)["seleccionados"],
+                  base, destino, verbose=False)
+
+    r = preprocesar_carpeta(destino, tmp_path / "salida", verbose=False)
+    assert len(r["procesados"]) == 2
