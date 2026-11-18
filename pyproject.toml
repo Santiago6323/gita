@@ -4,13 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gita-lab"
-version = "0.0.1"
+version = "0.1.0"
 description = "Herramientas de procesamiento de señales y aprendizaje automático del GITA Lab (UdeA)"
 readme = "README.md"
 requires-python = ">=3.8"
 license = { file = "LICENSE" }
 authors = [{ name = "Santiago Alvarez Zuluaga" }]
-dependencies = []
+dependencies = [
+    "numpy",
+    "scipy",      # gita.audio: remuestreo polifásico (resample_poly)
+    "soundfile",  # gita.audio: lectura/escritura de archivos de audio
+]
 
 [project.optional-dependencies]
 dev = ["pytest"]

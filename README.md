@@ -19,7 +19,7 @@ pip install git+https://github.com/Santiago6323/gita.git
 Una versión fija (recomendado en experimentos, para que los resultados sean reproducibles):
 
 ```bash
-pip install git+https://github.com/Santiago6323/gita.git@v0.0.1
+pip install git+https://github.com/Santiago6323/gita.git@v0.1.0
 ```
 
 Actualizar a la última versión:
@@ -31,11 +31,38 @@ pip install --upgrade --force-reinstall git+https://github.com/Santiago6323/gita
 En el `requirements.txt` de un proyecto:
 
 ```
-gita-lab @ git+https://github.com/Santiago6323/gita.git@v0.0.1
+gita-lab @ git+https://github.com/Santiago6323/gita.git@v0.1.0
 ```
 
 > El paquete se instala como `gita-lab` (`pip uninstall gita-lab`) y se importa como `gita`.
 > No uses `pip install gita`: ese nombre en PyPI pertenece a otra herramienta.
+
+## Módulos
+
+### `gita.audio` — remuestreo y normalización
+
+Lleva cualquier audio a mono, 16 kHz y normalizado por pico (el orden es
+mono → remuestreo → normalización, porque el filtro antialiasing del remuestreo
+cambia el pico). Dependencias: `numpy`, `scipy`, `soundfile` (incluidas en la
+instalación base).
+
+```python
+from gita.audio import preprocesar, preprocesar_archivo
+
+# Un archivo: lee, procesa y guarda (crea las carpetas de salida si no existen)
+preprocesar_archivo("original.wav", "procesado/original.wav")
+
+# Un arreglo en memoria (1D mono o 2D (n, canales), como lo da soundfile.read)
+senal_16k, fs = preprocesar(senal, fs_original)
+```
+
+| Función | Qué hace |
+|---|---|
+| `a_mono(senal)` | Promedia los canales: (n, canales) → (n,) |
+| `remuestrear(senal, fs_origen, fs_destino=16000)` | Remuestreo polifásico con antialiasing (`scipy.signal.resample_poly`) |
+| `normalizar_pico(senal, pico=1.0)` | Escala para que max(\|x\|) = pico; el silencio se deja igual |
+| `preprocesar(senal, fs, fs_destino=16000, mono=True, normalizar=True, pico=1.0)` | Las tres anteriores en orden; devuelve `(senal, fs_destino)` |
+| `preprocesar_archivo(entrada, salida, ..., subtipo="PCM_16")` | Lo mismo de archivo a archivo; devuelve `(salida, fs_destino)` |
 
 ## Estructura
 
