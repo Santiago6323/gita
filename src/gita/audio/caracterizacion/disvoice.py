@@ -29,6 +29,7 @@ from pathlib import Path
 import pandas as pd
 import soundfile as sf
 
+from ...caracteristicas import ESTRATEGIAS, guardar_pkl, limpiar_nan
 from ...datos import listar_archivos
 
 DIMENSIONES = ("phonation", "prosody", "articulation", "phonological", "glottal")
@@ -111,10 +112,12 @@ def caracterizar_disvoice(
     dinamicas=False,
     carpeta_salida="caracteristicas",
     sobrescribir=False,
+    nan="preguntar",
+    eliminar_filas_vacias=True,
     python_disvoice=None,
     verbose=True,
 ):
-    """Extrae características de DisVoice en modo estático y/o dinámico.
+    """Extrae características de DisVoice en modo estático y/o dinámico, las limpia y las guarda.
 
     Parámetros
     - entrada: carpeta de audios (.wav, incluye subcarpetas) o lista de rutas
@@ -125,25 +128,36 @@ def caracterizar_disvoice(
     - dinamicas: un vector por frame o segmento (static=False de DisVoice).
       Ambos modos se pueden pedir a la vez: se extraen en el mismo proceso.
     - carpeta_salida: por defecto "caracteristicas", relativa al directorio de
-      trabajo (en Spyder con %runfile --wdir, la carpeta del script). Guarda
-      <dim>.csv (estáticas), <dim>_dyn.csv (dinámicas) y errores_disvoice.csv.
+      trabajo (en Spyder con %runfile --wdir, la carpeta del script). Guarda:
+        <dim>.csv, <dim>_dyn.csv   características crudas (sin limpiar)
+        disvoice_estaticas.pkl     {dimension: DataFrame} limpio
+        disvoice_dinamicas.pkl     {dimension: DataFrame} limpio
+        errores_disvoice.csv       registro de audios que fallaron
       None: no guarda nada.
-    - sobrescribir: si es False, una dimensión cuyo CSV ya existe se carga en
-      vez de extraerse de nuevo. Si ese CSV es de otra lista de audios, lanza
-      ValueError.
+    - sobrescribir: si es False, una dimensión cuyo CSV crudo ya existe se carga
+      en vez de extraerse de nuevo (la limpieza y el pkl se rehacen siempre). Si
+      ese CSV es de otra lista de audios, lanza ValueError.
+    - nan, eliminar_filas_vacias: limpieza de NaN antes de guardar el pkl (ver
+      gita.caracteristicas.limpiar_nan). nan="preguntar" muestra cuántas filas
+      tienen NaN y pregunta en la consola qué hacer; también puede ser "media",
+      "mediana", "moda", "cero" o "eliminar". Se aplica por separado a estáticas
+      y dinámicas; un participante eliminado sale de todas las dimensiones.
     - python_disvoice: Python del entorno de DisVoice (ver docstring del módulo).
 
     phonological exige audios a 16 kHz (con otra frecuencia phonet devuelve NaN):
     si alguno no lo está, se lanza ValueError antes de extraer.
 
     Columnas: id (nombre sin extensión), ruta (distingue el mismo id en tareas
-    distintas), [frame en dinámicas] y las características de DisVoice. Los NaN
-    se conservan y los ±inf pasan a NaN. Un audio que falla queda con su fila en
-    NaN (estáticas) o sin frames (dinámicas), y su error en "fallidos".
+    distintas), [frame en dinámicas] y las características de DisVoice. En las
+    crudas, los NaN de DisVoice se conservan y los ±inf pasan a NaN; un audio que
+    falla queda con su fila en NaN (estáticas) o sin frames (dinámicas), y su
+    error en "fallidos".
 
     Devuelve un dict con:
-    - "estaticas": {dimension: DataFrame}  (vacío si estaticas=False)
-    - "dinamicas": {dimension: DataFrame}  (vacío si dinamicas=False)
+    - "estaticas": {dimension: DataFrame} limpio  (vacío si estaticas=False)
+    - "dinamicas": {dimension: DataFrame} limpio  (vacío si dinamicas=False)
+    - "crudas": {"estaticas": {...}, "dinamicas": {...}} sin limpiar
+    - "limpieza": {tipo: informe de limpiar_nan (columnas e ids eliminados, estrategia)}
     - "fallidos": lista de dicts con dimension, tipo, ruta y error
     """
     if isinstance(dimensiones, str):
@@ -154,6 +168,8 @@ def caracterizar_disvoice(
     tipos = [t for t, pedido in zip(TIPOS, (estaticas, dinamicas)) if pedido]
     if not tipos:
         raise ValueError("Pide al menos un tipo: estaticas=True y/o dinamicas=True")
+    if nan != "preguntar" and nan not in ESTRATEGIAS:
+        raise ValueError("nan debe ser 'preguntar' o una de {}".format(ESTRATEGIAS))
 
     rutas = [str(p.resolve()) for p in listar_archivos(entrada, extensiones=(".wav",))]
     if not rutas:
@@ -227,8 +243,27 @@ def caracterizar_disvoice(
         fila for fila in errores[["dimension", "tipo", "ruta", "error"]].to_dict("records")
         if (fila["dimension"], fila["tipo"]) in pedidos
     ]
+    crudas = {t: {d: resultado[t][d] for d in dimensiones} for t in tipos}
+
+    # 4. Limpieza de NaN y pkl (por tipo)
+    limpias, limpieza = {}, {}
+    for tipo in tipos:
+        if verbose:
+            print("\n--- Limpieza de NaN: {} ---".format(_ETIQUETA[tipo]))
+        informe = limpiar_nan(crudas[tipo], estrategia=nan,
+                              eliminar_filas_vacias=eliminar_filas_vacias,
+                              nombre=_ETIQUETA[tipo], verbose=verbose)
+        limpias[tipo] = informe.pop("caracteristicas")
+        limpieza[tipo] = informe
+        if carpeta_salida is not None:
+            pkl = guardar_pkl(limpias[tipo], carpeta_salida / "disvoice_{}.pkl".format(tipo))
+            if verbose:
+                print("Guardado: {}".format(pkl))
+
     return {
-        "estaticas": {d: resultado["estaticas"][d] for d in dimensiones} if estaticas else {},
-        "dinamicas": {d: resultado["dinamicas"][d] for d in dimensiones} if dinamicas else {},
+        "estaticas": limpias.get("estaticas", {}),
+        "dinamicas": limpias.get("dinamicas", {}),
+        "crudas": crudas,
+        "limpieza": limpieza,
         "fallidos": fallidos,
     }
