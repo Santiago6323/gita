@@ -1,6 +1,12 @@
 import pytest
 
-from gita.datos import crear_enlaces, leer_ids, seleccionar_datos, seleccionar_por_ids
+from gita.datos import (
+    crear_enlaces,
+    leer_ids,
+    listar_archivos,
+    seleccionar_datos,
+    seleccionar_por_ids,
+)
 
 
 # --- leer_ids ---------------------------------------------------------------
@@ -151,7 +157,14 @@ def test_seleccionar_datos_desde_csv(base, tmp_path):
     ]
 
 
-def test_seleccionar_datos_con_lista(base, tmp_path):
+def test_seleccionar_datos_sin_destino_no_crea_nada(base, tmp_path):
+    antes = sorted(tmp_path.rglob("*"))
+    r = seleccionar_datos(base, ["ID001", "ID003"], verbose=False)
+    assert len(r["seleccionados"]) == 4 and r["enlaces"] is None
+    assert sorted(tmp_path.rglob("*")) == antes
+
+
+def test_seleccionar_datos_con_lista_y_destino(base, tmp_path):
     r = seleccionar_datos(base, ["ID002"], tmp_path / "sel", verbose=False)
     assert len(r["enlaces"]) == 1
 
@@ -164,3 +177,43 @@ def test_seleccionar_datos_sin_coincidencias_no_toca_destino(base, tmp_path):
     with pytest.raises(ValueError):
         seleccionar_datos(base, ["001", "002"], destino, verbose=False)
     assert sorted(destino.rglob("*")) == antes   # la selección anterior sigue intacta
+
+
+# --- listar_archivos --------------------------------------------------------
+
+def test_listar_archivos_carpeta(base):
+    archivos = listar_archivos(base)
+    assert len(archivos) == 5 and all(p.suffix == ".wav" for p in archivos)
+    assert archivos == sorted(archivos)
+
+
+def test_listar_archivos_no_recursivo_y_extensiones(base):
+    assert listar_archivos(base, recursivo=False) == []
+    assert len(listar_archivos(base, extensiones=(".txt",))) == 1
+
+
+def test_listar_archivos_archivo_unico(base):
+    ruta = base / "tarea1" / "ID001.wav"
+    assert listar_archivos(str(ruta)) == [ruta]
+
+
+def test_listar_archivos_lista(base):
+    lista = [str(base / "tarea2" / "ID003.wav"), base / "tarea1" / "ID001.wav"]
+    assert listar_archivos(lista) == [base / "tarea2" / "ID003.wav", base / "tarea1" / "ID001.wav"]
+
+
+def test_listar_archivos_lista_con_ruta_inexistente(base):
+    with pytest.raises(FileNotFoundError):
+        listar_archivos([base / "tarea1" / "ID001.wav", base / "no_existe.wav"])
+
+
+def test_listar_archivos_carpeta_inexistente(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        listar_archivos(tmp_path / "no_existe")
+
+
+def test_seleccion_se_pasa_directo_a_listar_archivos(base):
+    r = seleccionar_datos(base, ["ID001"], verbose=False)
+    assert listar_archivos(r["seleccionados"]) == [
+        base / "tarea1" / "ID001.wav", base / "tarea2" / "ID001.wav",
+    ]

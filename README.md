@@ -77,27 +77,27 @@ Selecciona de una base de datos solo los archivos de una lista de IDs. El ID de 
 archivo es su nombre sin extensión (`tarea1/ID001.wav` → `ID001`). No lee el contenido
 de los archivos, así que sirve para audio, IMU, EEG, etc. Sin dependencias extra.
 
+La selección es una **lista de rutas**: no se copia nada. Las funciones que procesan
+varios archivos (p. ej. la caracterización) aceptan una carpeta **o** una lista de
+rutas, gracias a `listar_archivos`.
+
 ```python
-from gita.datos import leer_ids, seleccionar_por_ids, crear_enlaces
-
-ids = leer_ids("ids.csv", columna="id")          # o leer_ids("ids.txt"): uno por línea
-r = seleccionar_por_ids("audios_16k/", ids)       # busca en todas las subcarpetas (tareas)
-print(r["ids_no_encontrados"])                    # IDs de la lista sin ningún archivo
-
-# Carpeta con solo los seleccionados, sin copiar datos (enlaces simbólicos)
-crear_enlaces(r["seleccionados"], "audios_16k/", "seleccionados/")
-
-# Las tres en una sola llamada
 from gita.datos import seleccionar_datos
-r = seleccionar_datos("audios_16k/", "ids.csv", "seleccionados/", columna="id")
+
+r = seleccionar_datos("audios_16k/", "ids.csv", columna="id")   # o una lista: ["ID001", ...]
+print(r["ids_no_encontrados"])        # IDs de la lista sin ningún archivo
+
+caracterizar("audios_16k/")           # todos los audios
+caracterizar(r["seleccionados"])      # solo los de la lista
 ```
 
 | Función | Qué hace |
 |---|---|
+| `listar_archivos(entrada, extensiones=(".wav",), recursivo=True)` | Normaliza la entrada: carpeta → sus archivos; archivo → `[archivo]`; lista → lista de `Path` (verifica que existan) |
 | `leer_ids(ruta, columna=None)` | IDs de un `.txt` (uno por línea) o de una columna de un `.csv`/`.tsv` (separador `,` `;` o tabulación detectado solo); quita espacios y duplicados |
 | `seleccionar_por_ids(carpeta, ids, extensiones=(".wav",), recursivo=True)` | Rutas de los archivos cuyo nombre está en `ids`; devuelve un dict con `seleccionados` e `ids_no_encontrados`. Coincidencia exacta (`001` ≠ `1`, `id001` ≠ `ID001`) |
-| `crear_enlaces(rutas, carpeta_base, carpeta_destino)` | Crea enlaces simbólicos manteniendo la estructura relativa a `carpeta_base`. La carpeta destino queda exactamente con la selección actual (borra los enlaces de una ejecución anterior, nunca los originales; si encuentra archivos reales, no toca nada) |
-| `seleccionar_datos(carpeta, ids, carpeta_destino, columna=None, extensiones=(".wav",))` | Las tres anteriores en una llamada; `ids` es un archivo o una lista. Si nada coincide, se detiene sin tocar la carpeta destino. Devuelve `seleccionados`, `enlaces` e `ids_no_encontrados` |
+| `seleccionar_datos(carpeta, ids, carpeta_destino=None, columna=None, ...)` | `leer_ids` + `seleccionar_por_ids` en una llamada; `ids` es un archivo o una lista. Si nada coincide, lanza un error. Con `carpeta_destino`, además crea una carpeta de enlaces |
+| `crear_enlaces(rutas, carpeta_base, carpeta_destino)` | Solo para herramientas externas que exigen una carpeta: crea enlaces simbólicos (sin copiar datos) manteniendo la estructura. La carpeta destino queda exactamente con la selección actual y nunca se tocan archivos reales |
 
 ## Estructura
 

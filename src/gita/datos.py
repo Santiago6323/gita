@@ -12,6 +12,38 @@ from collections import Counter
 from pathlib import Path
 
 
+def listar_archivos(entrada, extensiones=(".wav",), recursivo=True):
+    """Normaliza la entrada de las funciones que procesan varios archivos.
+
+    entrada puede ser:
+    - una carpeta: devuelve sus archivos con esas extensiones (recursivo=True
+      incluye subcarpetas), ordenados;
+    - un archivo: devuelve [ese archivo];
+    - una lista (o cualquier iterable) de rutas: la devuelve como lista de Path,
+      sin filtrar por extensión (se asume que la selección ya es la deseada).
+
+    Lanza FileNotFoundError si la carpeta, el archivo o alguna ruta de la
+    lista no existe.
+    """
+    if isinstance(entrada, (str, Path)):
+        entrada = Path(entrada)
+        if entrada.is_dir():
+            extensiones = {e.lower() for e in extensiones}
+            patron = entrada.rglob("*") if recursivo else entrada.glob("*")
+            return sorted(p for p in patron if p.is_file() and p.suffix.lower() in extensiones)
+        if entrada.is_file():
+            return [entrada]
+        raise FileNotFoundError("No existe: {}".format(entrada))
+
+    archivos = [Path(p) for p in entrada]
+    faltantes = [p for p in archivos if not p.is_file()]
+    if faltantes:
+        raise FileNotFoundError(
+            "{} rutas de la lista no existen, p. ej. {}".format(len(faltantes), faltantes[0])
+        )
+    return archivos
+
+
 def leer_ids(ruta, columna=None):
     """Lee una lista de IDs desde un archivo de texto.
 
@@ -64,13 +96,8 @@ def seleccionar_por_ids(carpeta, ids, extensiones=(".wav",), recursivo=True, ver
 
     ids = [str(i).strip() for i in ids]
     buscados = set(ids)
-    extensiones = {e.lower() for e in extensiones}
-    patron = carpeta.rglob("*") if recursivo else carpeta.glob("*")
-
-    seleccionados = sorted(
-        p for p in patron
-        if p.is_file() and p.suffix.lower() in extensiones and p.stem in buscados
-    )
+    archivos = listar_archivos(carpeta, extensiones, recursivo)
+    seleccionados = [p for p in archivos if p.stem in buscados]
     encontrados = {p.stem for p in seleccionados}
     no_encontrados = [i for i in dict.fromkeys(ids) if i not in encontrados]
 
@@ -159,23 +186,25 @@ def crear_enlaces(rutas, carpeta_base, carpeta_destino, verbose=True):
 
 
 def seleccionar_datos(
-    carpeta, ids, carpeta_destino, columna=None, extensiones=(".wav",), recursivo=True,
+    carpeta, ids, carpeta_destino=None, columna=None, extensiones=(".wav",), recursivo=True,
     verbose=True,
 ):
-    """Selecciona los archivos de una lista de IDs y crea con ellos una carpeta de enlaces.
+    """Selecciona los archivos de carpeta cuyos nombres están en una lista de IDs.
 
-    Encadena leer_ids -> seleccionar_por_ids -> crear_enlaces.
+    Encadena leer_ids -> seleccionar_por_ids (-> crear_enlaces, opcional).
 
     - ids: ruta a un archivo de IDs (str o Path; se lee con leer_ids y columna)
       o una lista de IDs.
-    - carpeta_destino: carpeta de enlaces simbólicos con solo los seleccionados,
-      con la misma estructura de carpeta (p. ej. tarea1/ID001.wav).
+    - carpeta_destino: None (por defecto) no crea nada en disco; la lista de
+      rutas en "seleccionados" se pasa directamente a las funciones que
+      procesan archivos. Si se da una ruta, crea ahí una carpeta de enlaces
+      simbólicos (para herramientas externas que solo acepten carpetas).
 
-    Si ningún archivo coincide con los IDs, lanza ValueError sin tocar
-    carpeta_destino (suele indicar una columna o unos nombres equivocados).
+    Si ningún archivo coincide con los IDs, lanza ValueError sin tocar nada
+    (suele indicar una columna o unos nombres equivocados).
 
-    Devuelve un dict con "seleccionados" (rutas originales), "enlaces" (rutas de
-    los enlaces) e "ids_no_encontrados".
+    Devuelve un dict con "seleccionados" (rutas originales),
+    "ids_no_encontrados" y "enlaces" (None si no se creó carpeta de enlaces).
     """
     if isinstance(ids, (str, Path)):
         ids = leer_ids(ids, columna)
@@ -187,9 +216,11 @@ def seleccionar_datos(
             "Revisa la columna o el formato de los IDs.".format(carpeta, list(ids)[:3])
         )
 
-    enlaces = crear_enlaces(r["seleccionados"], carpeta, carpeta_destino, verbose)
+    enlaces = None
+    if carpeta_destino is not None:
+        enlaces = crear_enlaces(r["seleccionados"], carpeta, carpeta_destino, verbose)
     return {
         "seleccionados": r["seleccionados"],
-        "enlaces": enlaces,
         "ids_no_encontrados": r["ids_no_encontrados"],
+        "enlaces": enlaces,
     }
