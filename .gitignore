@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.venv/
+venv/
+.spyproject/
+.ipynb_checkpoints/
+.DS_Store
+
+# Datos y resultados: nunca al repositorio
+*.wav
+*.pkl
+*.csv
+*.xlsx
+*.ods
+*.npy
+*.pt
+*.pth
