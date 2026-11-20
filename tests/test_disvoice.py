@@ -262,3 +262,29 @@ def test_pregunta_en_consola(disvoice_falso, audios, monkeypatch):
 def test_nan_invalido_falla_antes_de_extraer(audios):
     with pytest.raises(ValueError, match="nan"):
         caracterizar_disvoice(audios, nan="promedio", verbose=False)
+
+
+def test_interrumpir_detiene_el_proceso_de_disvoice(disvoice_falso, audios, monkeypatch):
+    import builtins
+    import subprocess
+
+    procesos = []
+    popen_original = subprocess.Popen
+
+    def popen_registrado(*args, **kwargs):
+        p = popen_original(*args, **kwargs)
+        procesos.append(p)
+        return p
+
+    def print_que_interrumpe(*args, **kwargs):
+        if args and str(args[0]).startswith("[phonation"):
+            raise KeyboardInterrupt
+        print_original(*args, **kwargs)
+
+    print_original = builtins.print
+    monkeypatch.setattr(modulo.subprocess, "Popen", popen_registrado)
+    monkeypatch.setattr(builtins, "print", print_que_interrumpe)
+
+    with pytest.raises(KeyboardInterrupt):
+        caracterizar_disvoice(audios, nan="media", carpeta_salida=None)
+    assert procesos and procesos[0].poll() is not None   # el proceso ya no está corriendo

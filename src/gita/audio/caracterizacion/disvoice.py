@@ -92,11 +92,17 @@ def _ejecutar_worker(python, rutas, pendientes, carpeta_tmp, verbose):
         universal_newlines=True, env=entorno,
     )
     lineas = []
-    for linea in proceso.stdout:
-        lineas.append(linea)
-        if verbose and not _RUIDO.match(linea):
-            print(linea, end="")
-    codigo = proceso.wait()
+    try:
+        for linea in proceso.stdout:
+            lineas.append(linea)
+            if verbose and not _RUIDO.match(linea):
+                print(linea, end="")
+        codigo = proceso.wait()
+    except BaseException:
+        # Ctrl+C (KeyboardInterrupt) o cualquier error: no dejar DisVoice corriendo solo
+        proceso.kill()
+        proceso.wait()
+        raise
     if codigo != 0:
         utiles = [l for l in lineas if not _RUIDO.match(l)]
         raise RuntimeError(
