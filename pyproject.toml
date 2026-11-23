@@ -14,7 +14,7 @@ dependencies = [
     "numpy",
     "scipy>=1.10",  # gita.audio: resample_poly; gita.estadisticas: random_table, odds_ratio
     "soundfile",    # gita.audio: lectura/escritura de archivos de audio
-    "pandas",       # gita.estadisticas: metadatos y tablas de contingencia
+    "pandas",       # gita.audio.disvoice: tablas de características; gita.estadisticas: metadatos
 ]
 
 [project.optional-dependencies]
