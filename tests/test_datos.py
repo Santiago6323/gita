@@ -2,6 +2,7 @@ import pytest
 
 from gita.datos import (
     crear_enlaces,
+    interseccion_ids,
     leer_ids,
     listar_archivos,
     seleccionar_datos,
@@ -217,3 +218,35 @@ def test_seleccion_se_pasa_directo_a_listar_archivos(base):
     assert listar_archivos(r["seleccionados"]) == [
         base / "tarea1" / "ID001.wav", base / "tarea2" / "ID001.wav",
     ]
+
+
+# --- interseccion_ids -------------------------------------------------------
+
+def test_interseccion_ids_ejemplo():
+    ids = interseccion_ids(["CTR01", "CTR02", "CTR03"],
+                           ["CTR01", "CTR04", "CTR03"],
+                           ["CTR01", "CTR03", "CTR05"], verbose=False)
+    assert ids == ["CTR01", "CTR03"]
+
+
+def test_interseccion_ids_mezcla_listas_txt_y_csv(tmp_path):
+    txt = tmp_path / "a.txt"
+    txt.write_text("CTR03\nCTR01\nCTR02\n")
+    csv = tmp_path / "b.csv"
+    csv.write_text("sujeto;grupo\nCTR01;GG\nCTR03;GU\nCTR09;GG\n")
+    salida = tmp_path / "comunes.txt"
+
+    ids = interseccion_ids(txt, (csv, "sujeto"), ["CTR01", "CTR03", " CTR03 "],
+                           ruta_txt=salida, verbose=False)
+
+    assert ids == ["CTR03", "CTR01"]                  # orden de la primera lista
+    assert leer_ids(salida) == ["CTR03", "CTR01"]
+
+
+def test_interseccion_ids_vacia():
+    assert interseccion_ids(["CTR01"], ["CTR02"], verbose=False) == []
+
+
+def test_interseccion_ids_requiere_dos_listas():
+    with pytest.raises(ValueError):
+        interseccion_ids(["CTR01"])

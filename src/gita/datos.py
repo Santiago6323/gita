@@ -80,6 +80,47 @@ def leer_ids(ruta, columna=None):
     return list(dict.fromkeys(valores))  # quita duplicados conservando el orden
 
 
+def interseccion_ids(*listas, ruta_txt=None, verbose=True):
+    """IDs presentes en TODAS las listas (inner join).
+
+        interseccion_ids(["CTR01", "CTR02", "CTR03"],
+                         ["CTR01", "CTR04", "CTR03"],
+                         ["CTR01", "CTR03", "CTR05"])   ->  ["CTR01", "CTR03"]
+
+    Cada lista puede ser:
+    - una lista (o cualquier iterable) de IDs, p. ej. la salida de obtener_ids;
+    - la ruta a un .txt con un ID por línea;
+    - una tupla (ruta, columna) para un .csv/.tsv con encabezado.
+
+    Conserva el orden de la primera lista. Si se da ruta_txt, guarda el
+    resultado ahí, uno por línea (se puede leer con leer_ids).
+    """
+    if len(listas) < 2:
+        raise ValueError("Se necesitan al menos dos listas de IDs")
+
+    leidas = []
+    for lista in listas:
+        if isinstance(lista, (str, Path)):
+            lista = leer_ids(lista)
+        elif isinstance(lista, tuple) and len(lista) == 2 and isinstance(lista[0], (str, Path)):
+            lista = leer_ids(lista[0], columna=lista[1])
+        leidas.append(list(dict.fromkeys(str(i).strip() for i in lista)))
+
+    comunes = set.intersection(*[set(l) for l in leidas])
+    ids = [i for i in leidas[0] if i in comunes]
+
+    if verbose:
+        for k, lista in enumerate(leidas, 1):
+            print("Lista {}: {} IDs ({} no están en todas)".format(k, len(lista), len(lista) - len(ids)))
+        print("En todas las listas: {} IDs".format(len(ids)))
+
+    if ruta_txt is not None:
+        ruta_txt = Path(ruta_txt)
+        ruta_txt.parent.mkdir(parents=True, exist_ok=True)
+        ruta_txt.write_text("\n".join(ids) + "\n", encoding="utf-8")
+    return ids
+
+
 def seleccionar_por_ids(carpeta, ids, extensiones=(".wav",), recursivo=True, verbose=True):
     """Busca en carpeta los archivos cuyo nombre (sin extensión) está en ids.
 
