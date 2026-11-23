@@ -91,3 +91,13 @@ def test_ids_repetidos_lanzan_error(metadatos):
     df = pd.concat([metadatos, metadatos.iloc[[0]]])
     with pytest.raises(ValueError, match="repetidos"):
         prueba_continua(df, "edad", "grupo", verbose=False)
+
+
+def test_conclusion_de_sesgo(metadatos, capsys):
+    r = prueba_continua(metadatos, "edad", "grupo")
+    assert r["conclusion"] == "Hay sesgo por edad"
+    assert capsys.readouterr().out.rstrip().endswith("Hay sesgo por edad")
+
+    r = prueba_categorica(metadatos, "sexo", "grupo")
+    assert r["conclusion"] == "No hay sesgo por sexo"
+    assert capsys.readouterr().out.rstrip().endswith("No hay sesgo por sexo")

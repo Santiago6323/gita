@@ -133,13 +133,14 @@ Decisión de cada función:
   versión de scipy no la trae). Efecto: V de Cramér y, en 2x2, odds ratio.
 
 En ambas se exige que no haya IDs repetidos (observaciones independientes), se excluyen
-las filas con valores faltantes y se informa qué IDs de la lista no están en los metadatos.
+las filas con valores faltantes, se informa qué IDs de la lista no están en los metadatos
+y el reporte termina con "Hay sesgo por <variable>" (p < alfa) o "No hay sesgo por <variable>".
 
 | Función | Qué hace |
 |---|---|
 | `cargar_metadatos(metadatos, col_id="ID")` | DataFrame o ruta (`.csv`/`.tsv`/`.txt` con separador detectado solo, `.xlsx`/`.xls`) → DataFrame con los IDs como texto (conserva `001`) |
-| `prueba_continua(metadatos, variable, grupo, ids=None, col_id="ID", alfa=0.05, boxplot=False, ruta_figura=None, verbose=True)` | Variable numérica por grupo; devuelve un dict con `descriptivos`, `normalidad`, `levene`, `prueba`, `estadistico`, `p`, `significativo`, `efecto`, `figura`, ... |
-| `prueba_categorica(metadatos, variable, grupo, ids=None, col_id="ID", alfa=0.05, n_simulaciones=100000, semilla=0, verbose=True)` | Variable categórica por grupo; devuelve un dict con `tabla`, `esperadas`, `supuestos`, `prueba`, `estadistico`, `p`, `gl`, `significativo`, `efecto`, ... |
+| `prueba_continua(metadatos, variable, grupo, ids=None, col_id="ID", alfa=0.05, boxplot=False, ruta_figura=None, verbose=True)` | Variable numérica por grupo; devuelve un dict con `descriptivos`, `normalidad`, `levene`, `prueba`, `estadistico`, `p`, `significativo`, `efecto`, `conclusion`, `figura`, ... |
+| `prueba_categorica(metadatos, variable, grupo, ids=None, col_id="ID", alfa=0.05, n_simulaciones=100000, semilla=0, verbose=True)` | Variable categórica por grupo; devuelve un dict con `tabla`, `esperadas`, `supuestos`, `prueba`, `estadistico`, `p`, `gl`, `significativo`, `efecto`, `conclusion`, ... |
 
 ## Estructura
 

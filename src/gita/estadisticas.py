@@ -113,6 +113,11 @@ def _formato_p(p):
     return "p < 0.001" if p < 0.001 else "p = {:.3f}".format(p)
 
 
+def _conclusion(variable, significativo):
+    """Frase final del reporte: si hay diferencia significativa entre grupos, hay sesgo."""
+    return "{} sesgo por {}".format("Hay" if significativo else "No hay", variable)
+
+
 # --------------------------------------------------------------------------
 # Variable continua
 # --------------------------------------------------------------------------
@@ -144,8 +149,9 @@ def prueba_continua(metadatos, variable, grupo, ids=None, col_id="ID", alfa=0.05
 
     Devuelve un dict con: descriptivos (DataFrame), normalidad (dict por grupo),
     levene (dict o None), prueba, estadistico, p, significativo, efecto
-    (nombre y valor), n_por_grupo, ids_no_encontrados, n_excluidos_nan y
-    figura (Figure de matplotlib o None).
+    (nombre y valor), n_por_grupo, ids_no_encontrados, n_excluidos_nan,
+    conclusion ("Hay sesgo por <variable>" si p < alfa, si no "No hay sesgo por
+    <variable>") y figura (Figure de matplotlib o None).
     """
     import pandas as pd
 
@@ -227,6 +233,7 @@ def prueba_continua(metadatos, variable, grupo, ids=None, col_id="ID", alfa=0.05
         "n_por_grupo": {g: len(x) for g, x in zip(nombres, muestras)},
         "ids_no_encontrados": info["ids_no_encontrados"],
         "n_excluidos_nan": info["n_excluidos_nan"],
+        "conclusion": _conclusion(variable, p < alfa),
         "figura": None,
     }
 
@@ -247,6 +254,7 @@ def prueba_continua(metadatos, variable, grupo, ids=None, col_id="ID", alfa=0.05
             prueba, resultado["estadistico"], _formato_p(p),
             "diferencia significativa" if resultado["significativo"] else "sin diferencia significativa"))
         print("Tamaño del efecto ({}): {:.3f}".format(*efecto))
+        print("\n{}".format(resultado["conclusion"]))
 
     if boxplot:
         resultado["figura"] = _diagrama_cajas(nombres, muestras, variable, grupo,
@@ -334,7 +342,8 @@ def prueba_categorica(metadatos, variable, grupo, ids=None, col_id="ID", alfa=0.
     Devuelve un dict con: tabla (contingencia observada), esperadas,
     supuestos (dict con cada condición), prueba, estadistico, p, gl (None en
     Fisher), significativo, efecto (V de Cramér; en 2x2 también odds ratio),
-    ids_no_encontrados y n_excluidos_nan.
+    ids_no_encontrados, n_excluidos_nan y conclusion ("Hay sesgo por <variable>"
+    si p < alfa, si no "No hay sesgo por <variable>").
     """
     import pandas as pd
 
@@ -399,6 +408,7 @@ def prueba_categorica(metadatos, variable, grupo, ids=None, col_id="ID", alfa=0.
         "efecto": efecto,
         "ids_no_encontrados": info["ids_no_encontrados"],
         "n_excluidos_nan": info["n_excluidos_nan"],
+        "conclusion": _conclusion(variable, p < alfa),
     }
 
     if verbose:
@@ -423,6 +433,7 @@ def prueba_categorica(metadatos, variable, grupo, ids=None, col_id="ID", alfa=0.
             prueba, texto_est, _formato_p(p),
             "asociación significativa" if resultado["significativo"] else "sin asociación significativa"))
         print("Tamaño del efecto: " + ", ".join("{} = {:.3f}".format(k, v) for k, v in efecto.items()))
+        print("\n{}".format(resultado["conclusion"]))
 
     return resultado
 
