@@ -12,12 +12,15 @@ license = { file = "LICENSE" }
 authors = [{ name = "Santiago Alvarez Zuluaga" }]
 dependencies = [
     "numpy",
-    "scipy",      # gita.audio: remuestreo polifásico (resample_poly)
-    "soundfile",  # gita.audio: lectura/escritura de archivos de audio
+    "scipy>=1.10",  # gita.audio: resample_poly; gita.estadisticas: random_table, odds_ratio
+    "soundfile",    # gita.audio: lectura/escritura de archivos de audio
+    "pandas",       # gita.estadisticas: metadatos y tablas de contingencia
 ]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+graficas = ["matplotlib"]  # gita.estadisticas: diagrama de cajas (boxplot=True)
+excel = ["openpyxl"]       # gita.estadisticas: leer metadatos desde .xlsx
+dev = ["pytest", "matplotlib", "openpyxl"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
