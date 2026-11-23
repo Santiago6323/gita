@@ -99,6 +99,48 @@ caracterizar(r["seleccionados"])      # solo los de la lista
 | `seleccionar_datos(carpeta, ids, carpeta_destino=None, columna=None, ...)` | `leer_ids` + `seleccionar_por_ids` en una llamada; `ids` es un archivo o una lista. Si nada coincide, lanza un error. Con `carpeta_destino`, además crea una carpeta de enlaces |
 | `crear_enlaces(rutas, carpeta_base, carpeta_destino)` | Solo para herramientas externas que exigen una carpeta: crea enlaces simbólicos (sin copiar datos) manteniendo la estructura. La carpeta destino queda exactamente con la selección actual y nunca se tocan archivos reales |
 
+### `gita.estadisticas` — comparación de grupos
+
+Hace el ciclo completo de una prueba estadística entre grupos (p. ej. GG vs GU) a
+partir de una tabla de metadatos: verifica los supuestos, elige la prueba, calcula el
+tamaño del efecto e imprime un reporte. Los metadatos pueden ser un DataFrame o la ruta
+a un `.csv`/`.tsv`/`.xlsx`, y se puede restringir el análisis a una lista de IDs (lista o
+archivo, como en `gita.datos`). Dependencias: `pandas`; `matplotlib` para el diagrama
+de cajas (`pip install "gita-lab[graficas]"`) y `openpyxl` para leer `.xlsx`
+(`gita-lab[excel]`).
+
+```python
+from gita.estadisticas import prueba_continua, prueba_categorica
+
+r = prueba_continua("metadatos.csv", "edad", "grupo", ids="ids.txt", boxplot=True)
+print(r["prueba"], r["p"], r["efecto"])
+
+r = prueba_categorica("metadatos.csv", "sexo", "grupo", ids="ids.txt")
+print(r["tabla"])          # tabla de contingencia
+print(r["supuestos"])      # regla de Cochran, esperada mínima, ...
+```
+
+Decisión de cada función:
+
+- **Continua**: Shapiro-Wilk en cada grupo → si todos son normales, Levene decide entre
+  t de Student (varianzas iguales) y t de Welch; si alguno no es normal (o tiene < 3
+  datos), U de Mann-Whitney. Con más de 2 grupos: ANOVA / ANOVA de Welch / Kruskal-Wallis.
+  Efecto: g de Hedges, r biserial por rangos, eta² o épsilon².
+- **Categórica**: tabla de contingencia y frecuencias esperadas → chi-cuadrado (con
+  corrección de Yates en 2x2) si se cumple la regla de Cochran (ninguna esperada < 1 y
+  ≤ 20 % de celdas con esperada < 5; en 2x2 además n ≥ 20 y todas las esperadas ≥ 5);
+  si no, Fisher exacta (Fisher-Freeman-Halton en tablas mayores, por Monte Carlo si la
+  versión de scipy no la trae). Efecto: V de Cramér y, en 2x2, odds ratio.
+
+En ambas se exige que no haya IDs repetidos (observaciones independientes), se excluyen
+las filas con valores faltantes y se informa qué IDs de la lista no están en los metadatos.
+
+| Función | Qué hace |
+|---|---|
+| `cargar_metadatos(metadatos, col_id="ID")` | DataFrame o ruta (`.csv`/`.tsv`/`.txt` con separador detectado solo, `.xlsx`/`.xls`) → DataFrame con los IDs como texto (conserva `001`) |
+| `prueba_continua(metadatos, variable, grupo, ids=None, col_id="ID", alfa=0.05, boxplot=False, ruta_figura=None, verbose=True)` | Variable numérica por grupo; devuelve un dict con `descriptivos`, `normalidad`, `levene`, `prueba`, `estadistico`, `p`, `significativo`, `efecto`, `figura`, ... |
+| `prueba_categorica(metadatos, variable, grupo, ids=None, col_id="ID", alfa=0.05, n_simulaciones=100000, semilla=0, verbose=True)` | Variable categórica por grupo; devuelve un dict con `tabla`, `esperadas`, `supuestos`, `prueba`, `estadistico`, `p`, `gl`, `significativo`, `efecto`, ... |
+
 ## Estructura
 
 ```
