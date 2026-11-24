@@ -6,6 +6,7 @@ from gita.caracteristicas import (
     cargar_pkl,
     guardar_pkl,
     limpiar_nan,
+    obtener_clases,
     obtener_ids,
     seleccionar_caracteristicas,
 )
@@ -215,3 +216,48 @@ def test_seleccionar_ids_numericos_en_la_matriz():
 def test_seleccionar_sin_coincidencias(estaticas):
     with pytest.raises(ValueError):
         seleccionar_caracteristicas(estaticas, ["001", "002"], verbose=False)
+
+
+# --- obtener_clases ---------------------------------------------------------
+
+@pytest.fixture
+def ids_grupos():
+    return pd.Series(["GG_001", "GU_002", "GG_003", "CTRL_4"], index=[10, 11, 12, 13])
+
+
+def test_obtener_clases_lista(ids_grupos):
+    y = obtener_clases(ids_grupos[:3], ["GG", "GU"])
+    assert y.tolist() == ["GG", "GU", "GG"]
+    assert y.name == "clase"
+    assert list(y.index) == [10, 11, 12]
+
+
+def test_obtener_clases_dict_y_mayusculas(ids_grupos):
+    y = obtener_clases(ids_grupos, {0: "gg", 1: "gu", 2: "ctrl"}, ignorar_mayusculas=True)
+    assert y.tolist() == [0, 1, 0, 2]
+
+
+def test_obtener_clases_sin_clase(ids_grupos):
+    with pytest.raises(ValueError, match="CTRL_4"):
+        obtener_clases(ids_grupos, ["GG", "GU"])
+    y = obtener_clases(ids_grupos, ["GG", "GU"], sin_clase="nan")
+    assert y.isna().tolist() == [False, False, False, True]
+
+
+def test_obtener_clases_ambiguos(ids_grupos):
+    with pytest.raises(ValueError, match="más de una clase"):
+        obtener_clases(ids_grupos, {"a": "G", "b": "GG"})
+
+
+def test_obtener_clases_regex_y_literal():
+    ids = ["GG.1", "XGG2", "GGx3"]
+    assert obtener_clases(ids, {"gg": "^GG"}, regex=True, sin_clase="nan").isna().tolist() == [False, True, False]
+    # literal: el punto no es comodín
+    assert obtener_clases(ids, {"p": "GG."}, sin_clase="nan").notna().tolist() == [True, False, False]
+
+
+def test_obtener_clases_argumentos_invalidos(ids_grupos):
+    with pytest.raises(ValueError):
+        obtener_clases(ids_grupos, [])
+    with pytest.raises(ValueError):
+        obtener_clases(ids_grupos, ["GG"], sin_clase="otra")

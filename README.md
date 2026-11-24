@@ -146,13 +146,20 @@ un DataFrame, un dict `{dimension: DataFrame}` o la ruta a un `.pkl`, y devuelve
 misma estructura. Columnas de metadatos: `id` (obligatoria), `ruta` y `frame` (dinámicas).
 
 ```python
-from gita.caracteristicas import cargar_pkl, limpiar_nan, obtener_ids, seleccionar_caracteristicas
+from gita.caracteristicas import (cargar_pkl, limpiar_nan, obtener_clases, obtener_ids,
+                                  seleccionar_caracteristicas)
 
 c = cargar_pkl("caracteristicas/disvoice_estaticas.pkl")       # {"phonation": df, ...}
 
 ids = obtener_ids(c, ruta_txt="ids_validos.txt")                # ids en todas las dimensiones
 r = seleccionar_caracteristicas(c, "ids.csv", columna="id")     # o una lista de ids
 c_filtrado = r["caracteristicas"]
+
+# Etiquetas de clase a partir del texto de una columna (str.contains por clase)
+df = c["phonation"]
+y = obtener_clases(df["id"], {0: "GG", 1: "GU"})                 # o ["GG", "GU"]
+y = obtener_clases(df["id"], ["GG", "GU"], sin_clase="nan")      # IDs de otros grupos -> NaN
+df, y = df[y.notna()], y[y.notna()]
 ```
 
 | Función | Qué hace |
@@ -160,6 +167,7 @@ c_filtrado = r["caracteristicas"]
 | `limpiar_nan(caracteristicas, estrategia="preguntar", eliminar_filas_vacias=True)` | 1) borra columnas todo-NaN; 2) borra filas todo-NaN (audios fallidos); 3) informa cuántas filas tienen NaN y aplica `media`, `mediana`, `moda`, `cero` o `eliminar` (estáticas: participantes; dinámicas: frames). `"preguntar"` lo pregunta en la consola. Un participante eliminado sale de todas las dimensiones |
 | `obtener_ids(caracteristicas, ruta_txt=None)` | IDs presentes en todas las dimensiones (sin repetir, en orden); opcionalmente los guarda en un `.txt` legible con `leer_ids` |
 | `seleccionar_caracteristicas(caracteristicas, ids, columna=None)` | Como `seleccionar_datos`, pero sobre características: filtra a los IDs de una lista o archivo `.txt`/`.csv`. Devuelve `caracteristicas` e `ids_no_encontrados` |
+| `obtener_clases(columna, patrones, regex=False, ignorar_mayusculas=False, sin_clase="error")` | Etiqueta cada fila según el texto de una columna (p. ej. `df["id"]`): aplica `str.contains` con el patrón de cada clase. `patrones`: lista (la etiqueta es el patrón) o dict `{etiqueta: patron}`. Patrones literales por defecto (`regex=True` para `^GG`, etc.). Un valor que coincide con dos clases da error; uno sin clase da error o NaN (`sin_clase="nan"`). Devuelve una `Series` con el índice de la columna |
 | `guardar_pkl(caracteristicas, ruta)` / `cargar_pkl(ruta)` | Guarda y carga un DataFrame o un dict de DataFrames |
 
 > Imputar con estadísticos de todos los datos antes de dividir en entrenamiento/prueba
