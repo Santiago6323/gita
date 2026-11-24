@@ -2,20 +2,25 @@
 
 - seleccionar_m: barrido del número de gaussianas M (AIC, BIC).
 - graficar_seleccion_m: curva AIC/BIC vs M.
-- ClasificadorGMM: un GMM por clase, decisión por máxima probabilidad a posteriori.
-  Compatible con scikit-learn (Pipeline, cross_val_score, GridSearchCV).
+- momentos_gmm: media y covarianza globales de un GMM.
+- distancia_mahalanobis_gmm, distancia_bhattacharyya_gmm: distancias entre dos
+  GMMs ajustados de forma independiente (pueden tener distinto M).
 """
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 from scipy.special import logsumexp
-from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.mixture import GaussianMixture
-from sklearn.utils.multiclass import unique_labels
-from sklearn.utils.validation import check_array, check_is_fitted, check_X_y
+from sklearn.utils.validation import check_array, check_is_fitted
 
-__all__ = ["seleccionar_m", "graficar_seleccion_m", "ClasificadorGMM"]
+__all__ = [
+    "seleccionar_m",
+    "graficar_seleccion_m",
+    "momentos_gmm",
+    "distancia_mahalanobis_gmm",
+    "distancia_bhattacharyya_gmm",
+]
 
 
 def _crear_gmm(m, tipo_covarianza, n_init, max_iter, reg_covar, random_state):
@@ -112,103 +117,102 @@ def graficar_seleccion_m(resultados, titulo=None, ax=None):
     return ax
 
 
-class ClasificadorGMM(ClassifierMixin, BaseEstimator):
-    """Clasificador generativo: un GMM por clase.
+# --- distancias entre GMMs --------------------------------------------------
 
-    Decide por argmax_c [ log p(x | c) + log P(c) ].
+def _covarianzas_completas(gmm):
+    """Covarianzas como arreglo (M, d, d) para cualquier covariance_type."""
+    m, d = gmm.means_.shape
+    c = gmm.covariances_
+    tipo = gmm.covariance_type
+    if tipo == "full":
+        return c
+    if tipo == "diag":
+        return np.stack([np.diag(v) for v in c])
+    if tipo == "spherical":
+        return np.stack([np.eye(d) * v for v in c])
+    if tipo == "tied":
+        return np.repeat(c[None], m, axis=0)
+    raise ValueError(f"covariance_type desconocido: {tipo}")
+
+
+def _verificar(gmm_a, gmm_b):
+    for g in (gmm_a, gmm_b):
+        check_is_fitted(g, "means_")
+    if gmm_a.means_.shape[1] != gmm_b.means_.shape[1]:
+        raise ValueError(f"Los GMMs tienen distinto número de características "
+                         f"({gmm_a.means_.shape[1]} vs {gmm_b.means_.shape[1]}).")
+
+
+def momentos_gmm(gmm):
+    """Media y covarianza globales de un GMM (la gaussiana equivalente).
+
+        mu    = sum_i w_i mu_i
+        Sigma = sum_i w_i (Sigma_i + mu_i mu_i') - mu mu'
+    """
+    check_is_fitted(gmm, "means_")
+    w, mus = gmm.weights_, gmm.means_
+    mu = w @ mus
+    covs = _covarianzas_completas(gmm)
+    segundo = np.einsum("i,ijk->jk", w, covs + np.einsum("ij,ik->ijk", mus, mus))
+    return mu, segundo - np.outer(mu, mu)
+
+
+def distancia_mahalanobis_gmm(gmm_a, gmm_b):
+    """Distancia de Mahalanobis entre dos GMMs.
+
+    Cada GMM se resume en su gaussiana equivalente (momentos_gmm) y:
+        D_M = sqrt(delta' S^-1 delta),  delta = mu_a - mu_b,  S = (Sigma_a + Sigma_b) / 2
+    Mide qué tan separados están los centros de las dos distribuciones en
+    unidades de su dispersión; no ve diferencias de forma con la misma media.
+    """
+    _verificar(gmm_a, gmm_b)
+    mu_a, cov_a = momentos_gmm(gmm_a)
+    mu_b, cov_b = momentos_gmm(gmm_b)
+    delta = mu_a - mu_b
+    s = (cov_a + cov_b) / 2
+    return float(np.sqrt(delta @ np.linalg.solve(s, delta)))
+
+
+def distancia_bhattacharyya_gmm(gmm_a, gmm_b, n_muestras=20000, random_state=None):
+    """Distancia de Bhattacharyya entre dos GMMs (estimada por Monte Carlo).
+
+        BC  = integral sqrt(p_a(x) p_b(x)) dx      (coeficiente, entre 0 y 1)
+        D_B = -ln(BC)                              (0 si son idénticos)
+
+    Entre mezclas no hay fórmula cerrada. Se estima muestreando de la mezcla
+    m = (p_a + p_b) / 2:  BC = E_m[ sqrt(p_a p_b) / m ].  Como
+    sqrt(p_a p_b) <= m, cada término está entre 0 y 1 y el estimador es
+    estable. Compara las distribuciones completas (posición y forma) y
+    funciona aunque los GMMs tengan distinto número de gaussianas.
 
     Parameters
     ----------
-    n_componentes : int o dict {clase: int}
-        Número de gaussianas M. Un int usa el mismo M para todas las clases;
-        un dict permite un M distinto por clase.
-    tipo_covarianza : {"full", "tied", "diag", "spherical"}
-    priors : {"empiricos", "uniformes"} o array-like
-        Probabilidades a priori de cada clase (en el orden de classes_).
-    n_init, max_iter, reg_covar, random_state :
-        Se pasan a sklearn.mixture.GaussianMixture.
-
-    Attributes
-    ----------
-    classes_ : array de clases
-    modelos_ : dict {clase: GaussianMixture ajustado}
-    log_priors_ : array con log P(c)
+    gmm_a, gmm_b : GaussianMixture ajustados (mismo número de características)
+    n_muestras : int
+        Muestras de Monte Carlo (la mitad de cada GMM). Más muestras -> menos
+        varianza en la estimación.
+    random_state : int o None
     """
+    _verificar(gmm_a, gmm_b)
+    n_a = n_muestras // 2
+    x = np.vstack([
+        _muestrear(gmm_a, n_a, random_state),
+        _muestrear(gmm_b, n_muestras - n_a, None if random_state is None else random_state + 1),
+    ])
+    lp_a, lp_b = gmm_a.score_samples(x), gmm_b.score_samples(x)
+    # ln[ sqrt(p_a p_b) / ((p_a + p_b) / 2) ]  (<= 0)
+    log_r = 0.5 * (lp_a + lp_b) - np.logaddexp(lp_a, lp_b) + np.log(2)
+    log_bc = logsumexp(log_r) - np.log(len(x))
+    return float(max(0.0, -log_bc))
 
-    def __init__(
-        self,
-        n_componentes=1,
-        tipo_covarianza="diag",
-        priors="empiricos",
-        n_init=3,
-        max_iter=200,
-        reg_covar=1e-6,
-        random_state=None,
-    ):
-        self.n_componentes = n_componentes
-        self.tipo_covarianza = tipo_covarianza
-        self.priors = priors
-        self.n_init = n_init
-        self.max_iter = max_iter
-        self.reg_covar = reg_covar
-        self.random_state = random_state
 
-    def _m_de_clase(self, clase):
-        if isinstance(self.n_componentes, dict):
-            return self.n_componentes[clase]
-        return self.n_componentes
-
-    def fit(self, X, y):
-        X, y = check_X_y(X, y)
-        self.classes_ = unique_labels(y)
-        self.n_features_in_ = X.shape[1]
-
-        self.modelos_ = {}
-        for c in self.classes_:
-            self.modelos_[c] = _crear_gmm(
-                self._m_de_clase(c), self.tipo_covarianza, self.n_init,
-                self.max_iter, self.reg_covar, self.random_state,
-            ).fit(X[y == c])
-
-        if isinstance(self.priors, str):
-            if self.priors == "empiricos":
-                p = np.array([np.mean(y == c) for c in self.classes_])
-            elif self.priors == "uniformes":
-                p = np.full(len(self.classes_), 1.0 / len(self.classes_))
-            else:
-                raise ValueError("priors debe ser 'empiricos', 'uniformes' o un array.")
-        else:
-            p = np.asarray(self.priors, dtype=float)
-            if p.shape != (len(self.classes_),) or not np.isclose(p.sum(), 1):
-                raise ValueError("priors debe tener una probabilidad por clase y sumar 1.")
-        self.log_priors_ = np.log(p)
-        return self
-
-    def log_verosimilitud(self, X):
-        """log p(x | c) para cada muestra y clase -> (n_muestras, n_clases)."""
-        check_is_fitted(self, "modelos_")
-        X = check_array(X)
-        return np.column_stack(
-            [self.modelos_[c].score_samples(X) for c in self.classes_]
-        )
-
-    def _log_conjunta(self, X):
-        return self.log_verosimilitud(X) + self.log_priors_
-
-    def predict_log_proba(self, X):
-        lc = self._log_conjunta(X)
-        return lc - logsumexp(lc, axis=1, keepdims=True)
-
-    def predict_proba(self, X):
-        return np.exp(self.predict_log_proba(X))
-
-    def predict(self, X):
-        return self.classes_[np.argmax(self._log_conjunta(X), axis=1)]
-
-    def decision_function(self, X):
-        """Binario: log-cociente a posteriori de classes_[1] vs classes_[0].
-        Multiclase: log p(x|c) + log P(c) por clase."""
-        lc = self._log_conjunta(X)
-        if len(self.classes_) == 2:
-            return lc[:, 1] - lc[:, 0]
-        return lc
+def _muestrear(gmm, n, random_state):
+    """Muestras de un GMM sin modificar su random_state interno."""
+    rng = np.random.default_rng(random_state)
+    comp = rng.choice(len(gmm.weights_), size=n, p=gmm.weights_)
+    covs = _covarianzas_completas(gmm)
+    x = np.empty((n, gmm.means_.shape[1]))
+    for i in np.unique(comp):
+        sel = comp == i
+        x[sel] = rng.multivariate_normal(gmm.means_[i], covs[i], size=sel.sum())
+    return x
