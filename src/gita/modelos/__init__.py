@@ -1,7 +1,19 @@
 """
-gita.modelos — modelos de clasificación.
+gita.modelos — modelos de mezcla de gaussianas (GMM): selección de M y distancias.
 """
 
-from .gmm import ClasificadorGMM, graficar_seleccion_m, seleccionar_m
+from .gmm import (
+    distancia_bhattacharyya_gmm,
+    distancia_mahalanobis_gmm,
+    graficar_seleccion_m,
+    momentos_gmm,
+    seleccionar_m,
+)
 
-__all__ = ["ClasificadorGMM", "graficar_seleccion_m", "seleccionar_m"]
+__all__ = [
+    "distancia_bhattacharyya_gmm",
+    "distancia_mahalanobis_gmm",
+    "graficar_seleccion_m",
+    "momentos_gmm",
+    "seleccionar_m",
+]

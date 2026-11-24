@@ -246,13 +246,12 @@ y el reporte termina con "Hay sesgo por <variable>" (p < alfa) o "No hay sesgo p
 | `prueba_continua(metadatos, variable, grupo, ids=None, col_id="ID", alfa=0.05, boxplot=False, ruta_figura=None, verbose=True)` | Variable numérica por grupo; devuelve un dict con `descriptivos`, `normalidad`, `levene`, `prueba`, `estadistico`, `p`, `significativo`, `efecto`, `conclusion`, `figura`, ... |
 | `prueba_categorica(metadatos, variable, grupo, ids=None, col_id="ID", alfa=0.05, n_simulaciones=100000, semilla=0, verbose=True)` | Variable categórica por grupo; devuelve un dict con `tabla`, `esperadas`, `supuestos`, `prueba`, `estadistico`, `p`, `gl`, `significativo`, `efecto`, `conclusion`, ... |
 
-### `gita.modelos` — clasificación con GMM
+### `gita.modelos` — GMM: selección de M y distancias entre GMMs
 
-Clasificador generativo con un modelo de mezcla de gaussianas (GMM) por clase y
-herramientas para elegir el número de gaussianas M con AIC y BIC. Recibe una matriz de
-características (n_muestras, n_caracteristicas). El clasificador es compatible con
-scikit-learn (`Pipeline`, `cross_val_score`, `GridSearchCV`). Dependencias:
-`scikit-learn`, `pandas`; `matplotlib` para la curva (`gita-lab[graficas]`).
+Complementa a `sklearn.mixture.GaussianMixture` (que se usa directamente para ajustar
+los GMMs) con lo que scikit-learn no trae: el barrido de M con AIC/BIC y distancias
+entre dos GMMs. Recibe matrices de características (n_muestras, n_caracteristicas).
+Dependencias: `scikit-learn`, `pandas`; `matplotlib` para la curva (`gita-lab[graficas]`).
 
 ```
 AIC = -2 ln(L) + 2k
@@ -263,33 +262,43 @@ con L la verosimilitud máxima, k el número de parámetros libres y n el númer
 muestras. El M adecuado es el que minimiza el criterio.
 
 ```python
+from sklearn.mixture import GaussianMixture
 from sklearn.preprocessing import StandardScaler
-from sklearn.pipeline import make_pipeline
-from sklearn.model_selection import cross_val_score
-from gita.modelos import seleccionar_m, graficar_seleccion_m, ClasificadorGMM
+from gita.modelos import (seleccionar_m, graficar_seleccion_m,
+                          distancia_bhattacharyya_gmm, distancia_mahalanobis_gmm)
 
-# 1) Elegir M por clase (cada clase tiene su propio GMM), solo con datos de entrenamiento
-Xs = StandardScaler().fit_transform(X_train)
-for c in (0, 1):
-    res = seleccionar_m(Xs[y_train == c], m_valores=range(1, 10), random_state=0)
-    graficar_seleccion_m(res, titulo=f"Clase {c}")
+# 1) GMM de referencia: elegir M con BIC y ajustar
+escalador = StandardScaler().fit(X_ref)
+Xs = escalador.transform(X_ref)
+res = seleccionar_m(Xs, m_valores=[1, 2, 4, 8, 16, 32], random_state=0)
+graficar_seleccion_m(res, titulo="Referencia")
+m = int(res.loc[res["bic"].idxmin(), "m"])
+gmm_ref = GaussianMixture(n_components=m, covariance_type="diag", random_state=0).fit(Xs)
 
-# 2) Clasificar con el M elegido (int o un M por clase)
-pipe = make_pipeline(StandardScaler(),
-                     ClasificadorGMM(n_componentes={0: 2, 1: 3}, random_state=0))
-print(cross_val_score(pipe, X, y, cv=5, scoring="roc_auc"))
+# 2) Otro GMM (p. ej. todos los frames de una clase), con el MISMO escalador
+gmm_a = GaussianMixture(n_components=4, covariance_type="diag", random_state=0).fit(
+    escalador.transform(X_a))
+
+# 3) Distancias (los GMMs pueden tener distinto M)
+distancia_bhattacharyya_gmm(gmm_a, gmm_ref, random_state=0)
+distancia_mahalanobis_gmm(gmm_a, gmm_ref)
 ```
 
-| Función / clase | Qué hace |
+| Función | Qué hace |
 |---|---|
 | `seleccionar_m(X, m_valores=range(1, 11), tipo_covarianza="diag", n_init=3, max_iter=200, reg_covar=1e-6, random_state=None)` | Ajusta un GMM para cada M; devuelve un DataFrame con `m`, `n_parametros`, `aic`, `bic`, `convergio` |
 | `graficar_seleccion_m(resultados, titulo=None, ax=None)` | Curva AIC y BIC vs M, con el mínimo de cada una marcado; devuelve el `Axes` |
-| `ClasificadorGMM(n_componentes=1, tipo_covarianza="diag", priors="empiricos", ...)` | `fit`, `predict`, `predict_proba`, `predict_log_proba`, `decision_function` (binario: log-cociente a posteriori), `log_verosimilitud` (log p(x\|c) por clase). `priors`: `"empiricos"`, `"uniformes"` o un array |
+| `momentos_gmm(gmm)` | Media y covarianza globales del GMM (su gaussiana equivalente): mu = sum w_i mu_i, Sigma = sum w_i (Sigma_i + mu_i mu_i') - mu mu' |
+| `distancia_mahalanobis_gmm(gmm_a, gmm_b)` | sqrt(delta' S^-1 delta) entre las gaussianas equivalentes, con S = (Sigma_a + Sigma_b) / 2. Mide la separación de los centros; no ve diferencias de forma |
+| `distancia_bhattacharyya_gmm(gmm_a, gmm_b, n_muestras=20000, random_state=None)` | -ln ∫ sqrt(p_a p_b) dx, estimada por Monte Carlo muestreando de (p_a + p_b) / 2 (estimador acotado y estable). Compara las distribuciones completas; 0 si son idénticas |
 
-> Con pocas muestras conviene `tipo_covarianza="diag"`: con `"full"` el número de
-> parámetros crece con d², p. ej. d = 88 y M = 4 → 16019 parámetros (`diag`: 707).
-> Elegir M o estandarizar con todos los datos antes de dividir filtra información de
-> prueba al entrenamiento: hazlo dentro de cada partición.
+> Entre mezclas de gaussianas no hay fórmula cerrada para Bhattacharyya: el valor es una
+> estimación (error del orden de milésimas con 20 000 muestras). Fija `random_state`
+> para resultados reproducibles.
+>
+> Con pocas muestras y muchas características, el BIC puede bajar sin parar al crecer M
+> (las gaussianas colapsan sobre puntos o columnas casi constantes): limita `m_valores`,
+> sube `reg_covar` o reduce la dimensión.
 
 ## Estructura
 
