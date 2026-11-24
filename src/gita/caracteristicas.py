@@ -1,5 +1,5 @@
 """
-Manejo de matrices de características: limpieza de NaN, IDs, selección y pkl.
+Manejo de matrices de características: limpieza de NaN, IDs, selección, clases y pkl.
 
 Funciona con cualquier tipo de característica (audio, IMU, EEG...). Todas las
 funciones aceptan:
@@ -16,6 +16,7 @@ fila por frame). Cada DataFrame debe tener la columna "id".
 import pickle
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from .datos import leer_ids
@@ -273,3 +274,74 @@ def seleccionar_caracteristicas(caracteristicas, ids, columna=None, verbose=True
                 len(no_encontrados), no_encontrados[:10], " ..." if len(no_encontrados) > 10 else ""))
 
     return {"caracteristicas": _restaurar(filtrado, era_dataframe), "ids_no_encontrados": no_encontrados}
+
+
+def obtener_clases(columna, patrones, regex=False, ignorar_mayusculas=False, sin_clase="error"):
+    """Asigna una clase a cada fila según el texto que contiene la columna.
+
+    Equivale a aplicar ``columna.str.contains(patron)`` para cada clase y unir
+    los resultados en un solo vector de etiquetas.
+
+    Parameters
+    ----------
+    columna : pandas.Series o array-like
+        Valores de los que se extrae la clase (p. ej. ``df["id"]``).
+    patrones : dict {etiqueta: patron} o lista de str
+        Texto que identifica cada clase. Con una lista, la etiqueta es el
+        mismo patrón: ``["GG", "GU"]`` equivale a ``{"GG": "GG", "GU": "GU"}``.
+    regex : bool
+        Si True, los patrones son expresiones regulares (p. ej. ``"^GG"``,
+        ``"_CTRL$"``). Por defecto se buscan como texto literal.
+    ignorar_mayusculas : bool
+        Si True, ``"gg"`` coincide con ``"GG"``.
+    sin_clase : {"error", "nan"}
+        Qué hacer con las filas que no coinciden con ningún patrón:
+        ``"error"`` lanza un ValueError; ``"nan"`` las deja en NaN (para
+        filtrarlas después con ``y.notna()``).
+
+    Returns
+    -------
+    pandas.Series
+        Etiquetas, con el mismo índice que ``columna`` y nombre ``"clase"``.
+
+    Raises
+    ------
+    ValueError
+        Si una fila coincide con más de una clase (patrones ambiguos), o si
+        alguna fila no tiene clase y ``sin_clase="error"``.
+    """
+    if sin_clase not in ("error", "nan"):
+        raise ValueError("sin_clase debe ser 'error' o 'nan'.")
+    if not isinstance(patrones, dict):
+        patrones = {p: p for p in patrones}
+    if not patrones:
+        raise ValueError("Se necesita al menos un patrón.")
+
+    valores = columna if isinstance(columna, pd.Series) else pd.Series(columna)
+    valores = valores.astype(str)
+
+    coincide = pd.DataFrame({
+        etiqueta: valores.str.contains(patron, regex=regex, case=not ignorar_mayusculas)
+        for etiqueta, patron in patrones.items()
+    })
+    n_coincidencias = coincide.sum(axis=1)
+
+    ambiguos = valores[n_coincidencias > 1]
+    if len(ambiguos):
+        ejemplos = ", ".join(
+            f"{v!r} -> {list(coincide.columns[coincide.loc[i]])}"
+            for i, v in ambiguos.head(5).items()
+        )
+        raise ValueError(f"{len(ambiguos)} valores coinciden con más de una clase: {ejemplos}")
+
+    sin = valores[n_coincidencias == 0]
+    if len(sin) and sin_clase == "error":
+        raise ValueError(
+            f"{len(sin)} valores no coinciden con ninguna clase: {list(sin.head(10))}"
+            " (usa sin_clase='nan' para dejarlos en NaN)"
+        )
+
+    clases = pd.Series(np.nan, index=valores.index, dtype=object, name="clase")
+    for etiqueta in coincide.columns:
+        clases[coincide[etiqueta]] = etiqueta
+    return clases
