@@ -14,11 +14,12 @@ dependencies = [
     "numpy",
     "scipy>=1.10",  # gita.audio: resample_poly; gita.estadisticas: random_table, odds_ratio
     "soundfile",    # gita.audio: lectura/escritura de archivos de audio
-    "pandas",       # gita.audio.disvoice: tablas de características; gita.estadisticas: metadatos
+    "pandas",       # gita.audio.disvoice: tablas de características; gita.estadisticas: metadatos; gita.modelos: tabla AIC/BIC
+    "scikit-learn", # gita.modelos: GaussianMixture y API de estimadores
 ]
 
 [project.optional-dependencies]
-graficas = ["matplotlib"]  # gita.estadisticas: diagrama de cajas (boxplot=True)
+graficas = ["matplotlib"]  # gita.estadisticas: diagrama de cajas (boxplot=True); gita.modelos: curva AIC/BIC
 excel = ["openpyxl"]       # gita.estadisticas: leer metadatos desde .xlsx
 dev = ["pytest", "matplotlib", "openpyxl"]
 

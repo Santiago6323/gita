@@ -238,6 +238,51 @@ y el reporte termina con "Hay sesgo por <variable>" (p < alfa) o "No hay sesgo p
 | `prueba_continua(metadatos, variable, grupo, ids=None, col_id="ID", alfa=0.05, boxplot=False, ruta_figura=None, verbose=True)` | Variable numérica por grupo; devuelve un dict con `descriptivos`, `normalidad`, `levene`, `prueba`, `estadistico`, `p`, `significativo`, `efecto`, `conclusion`, `figura`, ... |
 | `prueba_categorica(metadatos, variable, grupo, ids=None, col_id="ID", alfa=0.05, n_simulaciones=100000, semilla=0, verbose=True)` | Variable categórica por grupo; devuelve un dict con `tabla`, `esperadas`, `supuestos`, `prueba`, `estadistico`, `p`, `gl`, `significativo`, `efecto`, `conclusion`, ... |
 
+### `gita.modelos` — clasificación con GMM
+
+Clasificador generativo con un modelo de mezcla de gaussianas (GMM) por clase y
+herramientas para elegir el número de gaussianas M con AIC y BIC. Recibe una matriz de
+características (n_muestras, n_caracteristicas). El clasificador es compatible con
+scikit-learn (`Pipeline`, `cross_val_score`, `GridSearchCV`). Dependencias:
+`scikit-learn`, `pandas`; `matplotlib` para la curva (`gita-lab[graficas]`).
+
+```
+AIC = -2 ln(L) + 2k
+BIC = -2 ln(L) + k ln(n)
+```
+
+con L la verosimilitud máxima, k el número de parámetros libres y n el número de
+muestras. El M adecuado es el que minimiza el criterio.
+
+```python
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import make_pipeline
+from sklearn.model_selection import cross_val_score
+from gita.modelos import seleccionar_m, graficar_seleccion_m, ClasificadorGMM
+
+# 1) Elegir M por clase (cada clase tiene su propio GMM), solo con datos de entrenamiento
+Xs = StandardScaler().fit_transform(X_train)
+for c in (0, 1):
+    res = seleccionar_m(Xs[y_train == c], m_valores=range(1, 10), random_state=0)
+    graficar_seleccion_m(res, titulo=f"Clase {c}")
+
+# 2) Clasificar con el M elegido (int o un M por clase)
+pipe = make_pipeline(StandardScaler(),
+                     ClasificadorGMM(n_componentes={0: 2, 1: 3}, random_state=0))
+print(cross_val_score(pipe, X, y, cv=5, scoring="roc_auc"))
+```
+
+| Función / clase | Qué hace |
+|---|---|
+| `seleccionar_m(X, m_valores=range(1, 11), tipo_covarianza="diag", n_init=3, max_iter=200, reg_covar=1e-6, random_state=None)` | Ajusta un GMM para cada M; devuelve un DataFrame con `m`, `n_parametros`, `aic`, `bic`, `convergio` |
+| `graficar_seleccion_m(resultados, titulo=None, ax=None)` | Curva AIC y BIC vs M, con el mínimo de cada una marcado; devuelve el `Axes` |
+| `ClasificadorGMM(n_componentes=1, tipo_covarianza="diag", priors="empiricos", ...)` | `fit`, `predict`, `predict_proba`, `predict_log_proba`, `decision_function` (binario: log-cociente a posteriori), `log_verosimilitud` (log p(x\|c) por clase). `priors`: `"empiricos"`, `"uniformes"` o un array |
+
+> Con pocas muestras conviene `tipo_covarianza="diag"`: con `"full"` el número de
+> parámetros crece con d², p. ej. d = 88 y M = 4 → 16019 parámetros (`diag`: 707).
+> Elegir M o estandarizar con todos los datos antes de dividir filtra información de
+> prueba al entrenamiento: hazlo dentro de cada partición.
+
 ## Estructura
 
 ```
